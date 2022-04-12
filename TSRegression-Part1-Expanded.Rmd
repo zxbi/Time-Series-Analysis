@@ -1,0 +1,872 @@
+---
+title: "Time Series Regression: Presidential Approval"
+subtitle: "PLSC 505"
+author: "Professor Linn"
+date: "February 15, 2022"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '3'
+  word_document: null
+  html_notebook:
+    number_sections: no
+    theme: cerulean
+    toc: yes
+    toc_depth: 3
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+<style type="text/css">
+
+body{ /* Normal  */
+      font-size: 26px;
+  }
+td {  /* Table  */
+  font-size: 18px;
+}
+
+code.r{ /* Code block */
+    font-size: 14px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+}
+.nobullet li {
+  list-style-type: none;
+}
+}
+</style>
+
+This help sheet covers the Gauss-Markov assumptions for time series data and introduces the autoregressive distributed lag (ADL) and generalized error correction model (GECM), as well as diagnostic tests for assessing if these models meet the necessary assumptions.
+
+Notation: 
+
++ $\mathbf{z}_t$ is the set of the explanatory variables in the equation at time $t$, $z_{1,t}, z_{2,t},..., z_{n,t}$. To be clear, $\mathbf{z_t}$ may include contemporaneous and lagged values of $x_n$ and lagged values of $y$. For example, $\mathbf{z}_t = x_{1t}, x_{1,t-1},x_{2,t}, x_{2,t-1}, y_{t-1}$.
++ $\mathbf{x}_t$ is the set of the explanatory variables in a model **excluding lags of $y_t$**.
+
+
+# Time Series Assumptions Necessary for OLS to be BLUE
+
+## TS1. Linearity
+
+The population model is linear and constant in parameters: 
+
+\begin{equation}
+y_t = \mathbf{z_t}\beta + \mu_t
+\end{equation}
+ where $\{\mu_t: t=1,2,..., T\}$ is the sequence of disturbances and $T$ is the number of time periods.
+ 
+## TS2. Stationarity and Weak Dependence 
+
+Recall, a series $_t$ is stationary if:
+
+  + $E(x_t)=\mu \ne f(t)$.
+  + $var(x_t)=\sigma^2 \ne f(t)$.
+  + $cov(x_t, x_t-s) = f(s)$, not $f(t)$.
+  
+In addition, it is weakly dependent if:
+
+  + $corr(x_t, x_{t-s}) \rightarrow 0$ as $h\rightarrow \infty$. In other words, the covariance of $x_t$ and $x_{t-s}$ has to decrease to 0 as $s$ goes to infinity and do so "quickly enough."  ARMA($p,q$) models are weakly dependent. Nonstationary processes violate weak dependence.
+
+
+## TS3. Zero conditional mean of errors: Strict Exogeneity 
+
+The expected value of the error at time $t$ is uncorrelated with all observeations of all other variables at all points in time, i.e., *in every time period*. 
+
+\[
+E(\mu_{t\pm h}|\mathbf{z_t})=0.
+\]
+$\forall t, h$.
+
+In other words, the average value of $\mu_t$ is unrelated to the value of the independent variables in all time periods. Anything that causes the unobservables at time $t$ to be correlated with any of the explanatory variables *in any time period* causes the assumption to fail.  As such, it is not realistic in time series, as we will see below.
+
+In the cross-sectional case, we required $E(\mu_i| \mathbf{x_i})=0$, i.e., zero conditional mean of errors only has to hold for individual $i$. We said nothing about how the error for one individual is related to the error for another individual. We don't need to worry about other $i$ because we assume we have a random sample, implying observations are independent. We have to worry about all other variables in the time series case because time series observations are not independent.
+
+
+## TS4. No serial correlation. 
+
+The errors at all points in time are uncorrelated with the observations of the regressors at all points in time: 
+
+\[
+cov(\mu_t,\mu_s | \mathbf{z_t})=0
+\]
+$\forall$  $s, t$ (current, past, and future).  
+
+In other words, knowing the error term at time $t$ doesn't help us predict the error in any other time period. (True also for cross-sectional data, but is true in that case by definition if we have a random sample.)
+
+## TS5. Conditional homoscedasticity. 
+
+The variance of the error must be constant conditional on the observations of the regressors *at all points in time*: 
+
+\[
+Var(\mu_{t \pm h}|\mathbf{z_t})=\sigma_{\mu}^2
+\]
+$\forall t, h$, $t=1,2,...,T$. 
+
+In the cross-sectional case we had that $var(\mu_i|x_{ji})=\sigma_{\mu}^2$, where the variance is only constant conditioned on $x_j$ for that individual, because we assume a random sample where all observations are independent of one another. The time dependence typical in time series data means we do need to worry about all other time periods.
+
+
+
+
+<span style="color:darkblue">**If 1-5 hold, then OLS is BLUE.**</span>
+
+
+## A Deeper Dive into Assumption 3: Strict Exogeneity.
+
+Recall that the zero conditional mean assumption (3) requires the average value of $\mu_t$ to be unrelated to the independent variables in all time periods.  Thus anything that causes the unobservables at time $t$ to be correlated with any of the explanatory variables in any time period causes this assumption to fail. Let's consider 3 cases where this assumption is violated.
+
+
+### 1. Omitted Lags of $x$
+
+Say we have a model of presidential approval ($A$) as a function of the disposable income ($I$) that looks like the following so that $\mathbf{z_t}=I_{t-1}$:
+
+$A_t = \alpha + \beta I_t + \mu_t$. 
+
+The zero conditional mean assumption (2) above requires $E(\mu_t|I)=0 \forall t$, i.e., for  all observerations of $I$ at all points in time.
+
+
+However, frequently an independent variable will have an effect on $y$ at some lag.  Say, the true data generating process is given by:
+
+\[
+A_{t} = \alpha + \beta I_t + \gamma I_{t-1} + \mu_{t-1}.
+\]
+
+This means the error in the first equation contains $\gamma I_{t-1}$. As a result, the error at time $t$ will be correlated with $I$ at time $t-1$  and the OLS estimator, $\hat{\beta}$ will be biased.  (If $\gamma>0$, it will be biased upward.) 
+
+Essentially we have an omitted variable bias problem. Our estimate of $\beta$ will "take credit" for the influence of $I_{t-1}$.  This is easy to deal with: we include the value of $I_{t-1}$ in the equation! 
+
+### 2. Feedfoward (feedbackward). 
+
+Say we believe protests in a country at time $t$ are caused by state violence at time $t$ so that $\mathbf{x}_t=V_t$ so that we require $E(\mu_t|V=0)$ for all $t$:  
+
+$P_t=\alpha + \beta V_t + \mu_t$. 
+
+But if state violence, $V_{t+1}$ is a function of $P_t$, then
+
+\[
+V_{t+1}=f(P_t)= g(\mu_t)
+\]
+and the error at time $t$ is going to be correlated with $V_{t+1}$. Thus, the OLS estimator $\hat{\beta}$ will be biased. Essentially, $V_t$ is going to pick up some of the effect of $P$ in the future time period. If the correlation is positive, our estimate is going to be greater than the true $\beta$. 
+
+This is a more serious problem than omitting a lagged independent variable and we cannot fix this by respecifying the equation (VAR is the natural solution). Luckily for large samples, OLS will be consistent.
+
+### 3. Lagged $y$
+
+Say that $\mathbf{z}_t=A_{t-1}$ and we model approval as an AR(1) process
+
+\[
+A_t = \alpha_0+\alpha_1 A_{t-1} + \mu_t.
+\]
+
+If this model is correct, then $E(A_t|A_{t-1}, A_{t-2},...)=E(A_t|A_{t-1})=E(A_t|\alpha_0+\alpha_1 A_{t-1}$ In other words, once we have controlled for lagged Approval, no further lags affect $A_t$. 
+
+But strict exogeneity requires $E(\mu_t|A= 0)\forall t$, including time $t$ and thus requires $cov(\mu_t,A_t)=0$. Rewrite substituting for $A_t$: 
+  
+\[
+cov(\mu_t, \alpha_0+\alpha_1 A_{t-1} + \mu_t).
+\]
+
+We can ignore the constant and we said above that $\alpha_1 A_{t-1}$ is not correlated with $\mu_t$, **but** we cannot ignore $\mu_t$. Thus, we are left with the covariance of $\mu_t$ with itself, which is the variance of $\mu_t$: 
+
+\[
+cov(\mu_t,\mu_t)=\sigma_{\mu}^2\ne0.
+\]
+
+Thus a lagged dependent variable results in a violation of assumption 3 and $\hat{\beta}_{OLS}$ will be biased.  However, if the sample size goes to infinity, OLS will be consistent: $\hat{\beta} \rightarrow^p \beta$.
+  
+#  Asymptotic LS Assumptions--We will use these!
+
+## ATS1. Linearity
+
+Same as above.
+
+## ATS2. Stationary and weakly dependent regressors. 
+
+Same as above.
+
+## ATS3. Zero conditional mean of errors Weak Exogeneity 
+
+The expected value of the error at time $t$ is uncorrelated with all observations of all other variables in the model *at time $t$*:
+
+\[
+E(\mu_t| \mathbf{z_t})=0.
+\]
+
+This assumption implies that $\mu_t$ is contemporaneously uncorrelated with $\mathbf{z_t}$ and thus that the $\mu_t$ are independent of the current values of the regressors *but not necessarily the past and future values of the regressors*. Sometimes this is written as $E(\mu_t=0), cov(z_{jt},\mu_t)=0$,  $j=1,...,k$. 
+
+Weak exogeneity is much less retrictive than strict exogeneity because it puts no restrictions on how $\mu_t$ is related to the explanatory variables in other time periods. This assumption permits feedback from $y$ to future values of $x$ such that the explanatory variables may be correlated with past values of the disturbance and permits lagged dependent variables.
+
+
+<span style="color:darkblue">**Given 1-3, $\hat{\beta} \rightarrow^p \beta$, OLS will be consistent.**</span>
+
+## ATS4. No serial correlation
+
+In this less restrictive version of the no serial correlatiom assumption, the covariance of error terms at time $t$ and $s$ with $\mathbf{z_t}$ *in those same time periods, $t$ and $s$ must be zero*:
+
+\[
+cov(\mu_t,\mu_s|\mathbf{z_t}, \mathbf{z_s})=0.
+\]
+
+We often ignore the conditioning on $\mathbf{z_t}$ and $\mathbf{z_s}$, and we think about whether $\mathbf{\mu_t}$ and $\mathbf{\mu_s}$ are uncorrelated, for all $t \ne s$.  This assumption will be violated if, conditioning on the regressors, we could use information on other values of the regressors to predict the current $y_t$.
+
+## ATS5. Conditional Homoscedasticity
+
+The variance of the error must be constant conditional on all observations on all variables in the model *at time $t$ only*.
+
+\[
+Var(\mu_t)|\mathbf{z_t}=\sigma_{\mu}^2.
+\]
+
+
+<span style="color:darkblue">**If 1-5 hold, OLS behaves normally in large samples and we can do inference.**</span>
+
+
+# Step 0: Preliminaries
+
+For this example, we are going to work with monthly presidential approval ratings. We want to know how objective economic indicators influence support for the president. We will use average Gallup Approval ratings from January 1978 through the end of Trump's term (December 2020). The economic indicators we will consider are the growth rate of leading economic indicators (**lei_pc**) and coincident economic indicators (**cei_pc**) and growth in disposable income per capita measured in 1996 dollars (**DSPIC96_pc_pca**). We'll also consider the effects of a number of interventions.
+
+```{r}
+load("TSRegressionApproval.RData")
+```
+
+
+```{r, message = FALSE}
+library(dplyr)
+library(grid)
+library(gridExtra)
+library(dynlm)
+library(tidyverse)
+library(ggplot2)
+library(ggthemes)
+library(astsa)
+library(strucchange)
+library(lmtest)
+library(sandwich)
+library(tseries)
+library(kableExtra)
+AppEcon <- AppEcon %>%
+  filter(year >= 1978 & year <= 2020)
+```
+
+
+## Univariate Analysis of Presidential Approval
+
+### Plot
+
+We'll start by plotting Presidential Approval and adding vertical lines to mark the beginning of each administration. (The variable **Inaug** marks a president's first month in office.)
+
+```{r}
+# Basic line plot
+
+ggplot(AppEcon, aes(x = date, y = Approving))+
+  geom_line() +
+  scale_x_date(date_labels = "%b\n%Y", date_breaks = "4 year", ) +
+  labs(title="Presidential Approval",
+       x="Month", 
+       y="Percent Approving", 
+       subtitle="July 1941 through September 2020") +
+    geom_vline(aes(xintercept = date),
+               data = AppEcon %>% filter(Inaug == 1), linetype=4, color = "darkgray") +
+  theme_pander()
+
+```
+
+
+
+
+
+### ACF/PACF
+
+I've used a function I wrote to produce the ACF/PACF.
+
+
+```{r, message=FALSE, warning=FALSE, results='hide'}
+suppressPackageStartupMessages(source("ggacfpacf.R")) 
+
+acf.App <- ggacf(AppEcon$Approving, plot.zero="no", lag = 24)
+pacf.App <- ggpacf(AppEcon$Approving, plot.zero="no", lag = 24)
+title1=textGrob("Presidential Approval", gp=gpar(fontface="bold"))
+grid.arrange(acf.App, pacf.App, nrow=1, top=title1)
+
+
+```
+
+This looks like an ARMA(1,1) process. Let's estimate an ARMA(1,1) model:
+
+
+### Estimate and ARMA Model for Presidential Approval
+
+```{r}
+sarima(AppEcon$Approving,p=1,d=0,q=1)
+```
+
+The big outlier is Sept 11, 2001.
+
+
+The ARMA(1,1) model fares well, but $\phi$ is close to one. Let's do a unit root test. 
+
+
+### Test for a Unit Root
+
++ Deterministics: Because there is no evidence of a trend, I'm setting $D_t=c$ (the series is mean stationary if stationary and a unit root without drift if not.) 
++ I'll set $p_{max}=12$ since we have monthly data, BUT we should not need many lags given the clear AR(1) structure of the DGP.
+
+
+```{r}
+suppressPackageStartupMessages(source("PGTSadfv2.R"))
+adf.tests(AppEcon$Approving, pmax = 14, lmtestorder = 12, type = "constant")
+```
+
+
+Which value of $p$ should we choose for the test regression?
+
++ No serial correlation in any test regression
++ AIC chooses 1 lag, which happens to be significant
++ BIC chooses 0 lags
++ We'd choose 13 if we chose to pick the regression where t> 1.60
+
+In every case, we cannot reject the null of a unit root without drift!
+
+We have learned that approval appears to be a stationary process. 
+
+
+## Univariate Analysis: DSPIC96_pc_pca, cei_pc, and lei_pc
+
+```{r}
+toplot <- AppEcon %>%
+  dplyr::select(Approving, DSPIC96_pc_pca, cei_pc, lei_pc, date)
+toplotlong <- toplot %>%
+pivot_longer(!date, names_to = "Series", values_to = "Values")
+```
+
+
+```{r}
+ggplot(toplotlong, aes(x = date, y = Values)) + 
+  geom_line(aes(color = Series), size = .6) +
+   scale_x_date(date_breaks = "48 month", date_labels = "%b\n%Y")+
+  theme_minimal() +
+  labs(title="Growth in Confidence Board Lagging and Leading Economic Indicators",
+       x="Month", 
+       y=NULL, 
+       subtitle="January 1978 through December 2020") +
+  theme(legend.text = element_text(size=8),
+        legend.position = "bottom") +
+  facet_wrap(~Series,  scales = "free", ncol = 2)
+```
+
+
+```{r}
+adf.tests(AppEcon$DSPIC96_pc_pca, pmax = 14, lmtestorder = 12, type = "constant")
+```
+
+
+
+```{r}
+adf.tests(AppEcon$cei_pc, pmax = 14, lmtestorder = 12, type = "constant")
+```
+
+
+
+```{r}
+adf.tests(AppEcon$lei_pc, pmax = 14, lmtestorder = 12, type = "constant")
+```
+
+
+# Regression Models for Stationary Time Series with Weakly Exogenous Regressors
+
+Our goal is to assess the long and short run relationships between our independent variables, $\mathbf{x}$ and our dependent variable $y$. Given the asymptotic linear regression assumptions, we can estimate a number of time series regression models and draw inference using standard inferential tools. 
+
+Step 1. The first step in dynamic specification is to choose a model specification relating some dependent variable $y$ to a set of explanatory variables $\mathbf{z_t}$, where $\mathbf{z_t}$ may include current and lagged values of $\mathbf{x}$ and lagged values of $y$. The specification we choose determines the structural relationship imposed on the data, i.e., it determines how $y$ is allowed to respond to $x$ -- at how many and which lags -- and its own past behavior.   Our task is to select a specification sufficiently general as to encompass the underlying data generating process such that the model does not violate ATS1-6. 
+
+Step 1. In step two, the analyst checks the statistical adequacy of the model given the data with tests designed to determine whether the time series regression assumptions are met. 
+
+Step 3. In step three the analyst tests restrictions on the general model in order to produce a more parsimonious specification for inference. While the general model could be used for inference, imposing (valid) restrictions on the general model will result in more efficient estimates. 
+
+Step 4. The last step, step four, is to draw inferences from the model. 
+
+# Step 1: Estimate A Plausible General Model of Presidential Approval
+
+A. Use theory to determine the variables to include in the model and the highest reasonable lag length for which $x$ and lagged values of $y$ might influence the present value of $y$. 
+
+B. Specify a model consistent with that knowledge.  The general model specification can be one of two flavors: the autoregressive distributed lag model (ADL) or the generalized error correction model (GECM.) These specifications encompass a wide range of dynamic structures. 
+
+
+
+## Autoregressive Distributed Lag Model
+
+The ADL specifies that $y$ is a function of contemporaneous and some number of lags ($q$) of the $n$ explanatory variables, $x$, and some number of lags ($p$) of the dependent variable, $y$:
+\[
+ y_t=\alpha_0 + \sum_{i=1}^p\alpha_i y_{t-i} + \sum_{j=1}^n\sum_{i=0}^q\beta_{j,i} x_{j,t-i} +
+\varepsilon_t
+\]
+where $\mathbf{z}_t=(y_{t-1},...,y_{t-i}; x_{j,t},...,x_{j,t-i})$; $p$ refers to the number of lags of $y_t$; $q$  the number of lags of $x_t$;  $n$ the number of independent variables in the model  and the asymptotic regression assumptions hold.
+
+The larger $p$ and $q$, the more general the dynamic structure permitted in the ADL. Often $p=1$ and $q=1$. In this case, the model specifies that contemporaneous and one lag of the $n$ regressors have a direct effect on $y$ and that they have an additional indirect effect by virtue of the inclusion of one lag of $y$. 
+
+### Trends, Seasonality, Shocks, and Structural Breaks
+
+Both the ADL and GECM can accommodate deterministic trends, structural breaks, and seasonality in a straightforward manner.  
+
++ If $y_t$ contains a linear deterministic trend, include $t$ as a regressor and  interpret the quantities from the resulting model as if we had detrended the data first. (Include $t$ in the moodel if any $x$ are trending to allow movement around the trend in $x$ to influence $y$.)
++ Add dummy variables that account for the influence of the break should be included. 
+  + A pulse dummy variable, where $Dp=0$ prior to the break, 1 at the point of the break, and 0 in all subsequent periods, will accommodate the effect of a temporary shock. 
+  + A step dummy, where $Dl=0$ before the break and 1 at the point of the break and in all subsequent periods, will accommodate the effect of a shock that permanently altered the mean of $y$. 
++ Seasonal dummies can be included in the regression, e.g., if $s=12$ we can include a dummy for each of the 12 months of the year (and suppress the constant). Including seasonal dummies in a regression can be interpreted as deseasonalizing the data.
+
+
+
+
+### Estimate an ADL
+
+Estimate the model using `dynlm()` in the package by the same name.  We will need to make the data ts/mts class. We're going to start in January 1978 and end in December 2020.
+
+I'm going to choose $p=2$ and $q=2$. Previous work on monthly presidential approval suggests this is more than sufficient to account for the dynamics in approval. Of course, we will check later!
+
+```{r}
+AppEcon.ts <- ts(AppEcon, start = c(1978,1), end = c(2020,12), freq = 12)
+```
+
+
+```{r, message=FALSE, warning=FALSE, results='asis'}
+ADL1 <- dynlm(Approving~L(Approving,1) +  
+               DSPIC96_pc_pca +L(DSPIC96_pc_pca, 1) + L(DSPIC96_pc_pca, 2)+ 
+               lei_pc + L(lei_pc, 1) + L(lei_pc, 2) +
+               cei_pc + L(cei_pc, 1) + L(cei_pc, 2) +
+               Reagan + BushI + Clinton + BushII + Obama + Trump + 
+               Honey + Inaug +  RAss + IraqKuwait + Desert + Lehman + 
+               Sept11 + Mueller  + Impeach1 + Impeach2 + CovidP + CovidS, data=AppEcon.ts)
+summary(ADL1)
+```
+
+
+## Generalized Error Correction Model
+
+The generalized error correction model (GECM) is a linear transformation of the ADL and thus while it has an alternative form, *it implies exactly the same dynamic structure*. The dependent variable in the GECM is the change in $y$ and is a function of (short run) changes in $x$ and lagged values of $y$ and $x$. The main attraction of the GECM is that this particular reparameterization of the ADL isolates the rate at which $y$ changes to return to equilibrium after a change in $x$ or any shocks (the error correction rate) and its standard error.
+
+To illustrate the equivalence of the ADL and GECM we begin with the ADL(1,1;1):
+\begin{equation}
+y_t=\alpha_0 + \alpha_1 y_{t-1} + \beta_0 x_t +\beta_1 x_{t-1} + \varepsilon_t.
+\end{equation}
+Subtract $y_{t-1}$ from both sides:
+\begin{equation}
+\Delta y_t=\alpha_0 +( \alpha_1-1) y_{t-1} + \beta_0 x_t +\beta_1 x_{t-1} + \varepsilon_t.
+\end{equation}
+ Add and subtract $\beta_0x_{t-1}$ on the right side:
+\begin{equation}
+\Delta y_t=\alpha_0 +(\alpha_1-1) y_{t-1} + \beta_0 \Delta x_t +(\beta_0 + \beta_1) x_{t-1} + \varepsilon_t. 
+\end{equation}
+Collecting terms:
+\begin{equation}
+ \Delta y_t = \alpha_0 + \alpha_1^* y_{t-1} + \beta_0^* \Delta x_t + \beta_1^* x_{t-1} + \varepsilon_t
+\end{equation}
+where $\alpha_1^* = (\alpha_1 - 1)$, $\beta_0^* = \beta_0$, and $\beta_1^* = \beta_0 + \beta_1$. Importantly, the fit of the model is identical to that of the ADL, although the $R^2$ will be different because the dependent variable is different. Similarly, the standard errors of comparable estimates will be the same.
+
+
+To see where the error correction model gets its name add and subtract $( \alpha_1-1) x_{t-1}$ on the right side of the above equation before where we collected terms and regroup terms:
+\begin{equation}
+\Delta y_t=\alpha_0 +( \alpha_1-1) (y_{t-1} -x_{t-1})+ \beta_0 \Delta x_t +(\beta_0 + \beta_1+\alpha_1-1) x_{t-1} + \varepsilon_t.
+\end{equation}
+In this form it is easy to see that the difference between $y$ and $x$ in the previous period determines change in $y$ in the current period (controlling for the other variables in the model).  Note that while it appears as though the equilibrium relationship between $x$ and $y$ is one-to-one, the additional $x_{t-1}$ on the righthand side of the model allows the nature of the equilibrium relationship to be more general. 
+
+
+### Estimate the ADL for Presidential Approval as a GECM:
+
+
+To estimate a comparable GECM, we will need one lag of $y_t$, one lag of each $x_{jt}$ and one first difference of each $x_{jt}$.
+
+```{r, results='hide'}
+GECM1 <- dynlm(d(Approving)~L(Approving,1) + 
+                 L(DSPIC96_pc_pca, 1) + d(DSPIC96_pc_pca) + L(d(DSPIC96_pc_pca), 1) +
+                 L(lei_pc, 1) + d(lei_pc) + L(d(lei_pc, 1)) + 
+                 L(cei_pc, 1) +  d(cei_pc) + L(d(cei_pc, 1)) + 
+                 Reagan + BushI + Clinton + BushII + Obama + Trump + 
+                 Honey + Inaug +  RAss + IraqKuwait + Desert + Lehman + 
+                 Sept11 + Mueller  + Impeach1 + Impeach2 + CovidP + CovidS, data=AppEcon.ts)
+summary(GECM1)
+```
+
+
+## Compare the ADL and GECM
+
+```{r, warning=FALSE, message=FALSE, results='asis'}
+ALL <- stargazer(ADL1, GECM1, 
+          type = "text", 
+          column.labels =c("ADL", "GECM"),
+          dep.var.labels = c("Approval","D-Approval"),
+          model.names = FALSE)
+```
+
+The results are the same if we take into account the relationships between the parameters in the two models:
+
++ Coefficient on contemporaneous $x_t$ in ADL = coefficient on $\Delta x_t$ in GECM
++ Sum of all levels coefficients on $x_t$ in ADL = coefficient on $x_{t-1}$ in GECM
+
+# Step Two: Diagnostics
+
+## TS1: Linear with Constant Parameters
+
+
+Plots of the observed versus predicted values from the estimated model should be randomly distributed around a 45 degree line while plots of residuals versus predicted values (or values of individual $x_{jt}$) should be distributed randomly around zero with a constant variance.
+
+### Plot of Predicted v Actual Values of Approval
+
+```{r}
+plot(ADL1$fitted.values,model.frame(ADL1)$Approving)
+```
+
+### Plot of Predited v Residuals
+
+```{r}
+plot(ADL1$fitted.values,ADL1$residuals)
+```
+
+### Ramsey's RESET Test
+
+The RESET test is a formal test for misspecification due to incorrect functional form and omitted variables, as well as correlation between $z_t$ and $\mu_t$. You estimate an auxiliary regression of $y_t$ on the squared (and possibly cubed and higher order functions) of the residuals from the original model specification and use an F-test to evaluate the joint null hypothesis that the coefficients on the powers of fitted values are all zero. If the null hypothesis is rejected, it could
+be due to either non-linearity or an omitted variable.
+
+The `resettest()` function in the lmtest package will do this for you.
+
+resettest(formula, power = 2:3, type = c("fitted", "regressor",
+  "princomp"), data = list(), vcov = NULL, ...)
+
++ The `formula` argument requires the formula for the regression to be tested.
++ The `power` argument tells the function what power of residuals to include in the test regression
++ `type` specifies whether powers of the fitted response, the regressor variables (factors are left out), or the first principal component of the regressor matrix should be included in the extended model.
++ `data` an optional data frame containing the variables in the model. By default the variables are taken from the environment which resettest is called from.
++ `vcov` optional arguments to be passed to waldtest for carrying out the F test.
+
+```{r}
+resettest(ADL1, power=2, type="regressor", data=AppEcon.ts)
+```
+
+
+The squared residuals do not explain variable in the model residuals!
+
+### EFP Tests
+
+efp(formula, data, type = , h = 0.15,
+    dynamic = FALSE, rescale = TRUE, lrvar = FALSE, vcov = NULL)
+
++ `formula` a symbolic description for the model to be tested.
++ `data` an optional data frame containing the variables in the model. By default the variables are taken from the environment which efp is called from.
++ `type` specifies which type of fluctuation process will be computed, the default is "Rec-CUSUM". 
++ `h` a numeric from interval (0,1) specifying the bandwidth. This determines the size of the data window relative to sample size (for MOSUM and ME processes only).
++ `dynamic` If TRUE the lagged observations are included as a regressor.
++ `rescale` If TRUE the estimates will be standardized by the regressor matrix of the corresponding subsample; if FALSE the whole regressor matrix will be used. (only if type is either "RE" or "ME")
++ `lrvar` Should a long-run variance estimator be used for the residuals? By default, the standard OLS variance is employed. Alternatively, lrvar can be used. If lrvar is character ("Andrews" or "Newey-West"), then the corresponding type of long-run variance is used. (The argument is ignored for the score-based tests where gefp should be used instead.)
++ `vcov	`a function to extract the covariance matrix for the coefficients of the fitted model (only for "RE" and "ME").
+
+After obtaining the efp process use the `plot()` function for a visual of the results and the `sctest()` function in strucchange to test the null of constancy in the efp.
+
+#### Cumulative Sum of Residuals
+
+```{r}
+my_efp <- efp(ADL1, type="OLS-CUSUM", data=AppEcon.ts)
+plot(my_efp)
+sctest(my_efp)
+
+```
+
+
+#### Recursive Parameter Estimates
+
+```{r}
+ADL1 <- dynlm(Approving~L(Approving,1) +  
+               DSPIC96_pc_pca +L(DSPIC96_pc_pca, 1) + L(DSPIC96_pc_pca, 2)+ 
+               lei_pc + L(lei_pc, 1) + L(lei_pc, 2) +
+               cei_pc + L(cei_pc, 1) + L(cei_pc, 2), data=AppEcon.ts)
+efp_fluc <- efp(ADL1, type="RE", data=AppEcon.ts)
+plot(efp_fluc)
+```
+
+```{r}
+efp_tbl <- as_tibble(efp_fluc$process)
+    
+    efp_tbl$date <- seq(as.Date("1978/12/1"), as.Date("2020/12/1"), "months")
+    efp_tbl
+    
+    colnames(efp_tbl) <- c("Intercept","Lag Approval","Disp Income","Lag Disp Income", "Lag 2 Disp Income", "LEI % Change", "Lag LEI % Change", "Lag 2 LEI % Change", "CEI % Change", "Lag CEI % Change", "Lag 2 CEI % Change", "Date")
+    efp_tbl
+    
+    efp_tbl <- efp_tbl[,c("Lag Approval","Disp Income","Lag Disp Income", "Lag 2 Disp Income", "LEI % Change", "Lag LEI % Change", "Lag 2 LEI % Change", "CEI % Change", "Lag CEI % Change", "Lag 2 CEI % Change", "Date")]
+    
+    efp_tbl_long <- efp_tbl %>%
+      pivot_longer(!Date, names_to = "Parameter", values_to = "Estimate")
+ggplot(efp_tbl_long, aes(x = Date, y = Estimate)) +
+      geom_line(lwd = 1) + 
+      ylim(-3,3) +
+      theme_bw() +
+      geom_hline(yintercept = 0, lwd = 1, lty = 2, col = "lightgray") +
+      geom_hline(yintercept = 1.67525, lwd = 1, lty = 2, col = "darkgray") +
+      geom_hline(yintercept = -1.67525, lwd = 1, lty = 2, col = "darkgray") +
+      facet_wrap(~Parameter) +
+      theme(plot.margin=unit(c(t = 0.5, r = 0.5, b = 1, l =1),"cm")) +
+      labs(x = "\n Date", y = "Empirical Fluctuation Processes\n ") +
+      theme(axis.title = element_text(size = 14)) +
+      theme(axis.text = element_text(size = 14)) +
+      theme(strip.text.x = element_text(size = 14)) +
+      theme(legend.position = "none")     
+```
+
+## TS2: Stationarity and Weak Dependence
+
+Evaluate the parameters on lagged Approval. Easy here, is it less than one in absolute value? Yes.
+
+## TS3: Zero Conditional Mean
+
+
+### Evaluate Weak Exogeneity
+
+See also Ramsey's RESET test above.
+
+1. Estimate marginal model for disposable income.
+
+```{r}
+DispInc <- dynlm( DSPIC96_pc_pca ~ L(DSPIC96_pc_pca, 1) + L(DSPIC96_pc_pca, 2)  + inflation + L(inflation, 1) + UNRATE + L(UNRATE, 1), data = AppEcon.ts)
+summary(DispInc)
+DIresids <- DispInc$residuals
+```
+
+2. Make sure there is no serial correlation. (More below.)
+
+```{r}
+bgtest(DispInc, order=24, type="Chisq")
+bgtest(DispInc, order=12, type="Chisq")
+bgtest(DispInc, order=6, type="Chisq")
+```
+
+
+3. Estimate Test Regression of residuals from conditional model on residuals from marginal model and lagged Approval.
+
+```{r}
+ExTest <- dynlm(ADL1$residuals~ DispInc$residuals + L(model.frame(ADL1)$Approving))
+(RExTest <- summary(ExTest))
+
+```
+
+
+4. Test the null hypothesis
+
+```{r}
+RExTest$r.squared*length(ExTest$residuals)
+    
+    qchisq(.10, 1, lower.tail=FALSE)
+    qchisq(.05, 1, lower.tail=FALSE)
+    qchisq(.01, 1, lower.tail=FALSE)
+```
+
+
+Weak exogeneity is plausible. We should test for **lei_pc** and **cei_pc**.
+
+## TS4: No Serial Correlation
+
+ATS5 requires
+\[
+cov(\mu_t,\mu_s|\mathbf{z_t}, \mathbf{z_s})=0.
+\]
+
+
+The chief question for determining the statistical adequacy of a given dynamic regression is whether the model is **dynamically complete**, i.e., it includes all lags of $y$ and $x$ (or $\Delta y_t$ and $\Delta x_t$) and any other variables that systematically affect the dynamics of $y_t$ such that the errors are uncorrelated over time.
+
+
+Causes of serial correlated errors:
+
++ omission of relevant explanatory variables, including unmodelled structural breaks, seasonality, or deterministic trends, 
++ the omission of relevant lags of the regressors (dynamic misspecification), or 
++ misspecification of the functional form, e.g., nonlinearities. 
+ 
+If we violate this assumption OLS estimates will be inconsistent.
+
+#### The Breusch-Godfrey LM Test for Serial Correlation
+
+The most widely used test for serially correlated disturbances is the Breusch-Godfrey Lagrange multiplier test (LM) (Breusch 1978, 1980, Godfrey 1978). To conduct the test:
+
+  1. Estimate the general model of interest. Let's assume the analyst has estimated an ADL(1,1;2):
+
+\begin{equation}
+y_t=\alpha_0 + \alpha_1 y_{t-1} + \beta_{10} x_{1,t} +\beta_{11} x_{1,t-1} + \beta_{20} x_{2,t} +\beta_{21} x_{2,t-1} + e_t.
+\end{equation}
+
+  2. Estimate the auxiliary regression of $\hat{e}_t$ on the the regressors included in the original regression and $s$ lagged residuals, where $s$ denotes the number of lags for which we wish to test for serial correlation and $\hat{e}_t$ are the residuals from the original regression:
+
+\begin{equation}
+\hat{e}_t = \gamma_{00} +\pi_{11}y_{t-1} + \gamma_{10} x_{1,t} + \gamma_{11}x_{1,t-1} +\gamma_{20} x_{2,t} + \gamma_{21}x_{2,t-1} + \rho_1 \hat{e}_{t-1} + \rho_2 \hat{e}_{t-2} + ... + \rho_s \hat{e}_{t-s}.
+\end{equation} 
+
+
+  If there is no serial correlation then the coefficients on the lagged error terms must all be zero: none of the explanatory variables will predict the current error:
+      + $H_0: \rho_1=\rho_2=...=\rho_s=0$. 
+      + $H_A: \rho_1 \ne 0$ and/or $\rho_2\ne 0,...,$ and/or $\rho_s\ne0$, in which case the errors follow a general ARMA($p,q$) process, where $s=max(p,q)$, so that the null hypothesis will be rejected if the residuals in the original equation follow an AR(p) or MA(q) or ARMA(p,q) process up to lag $s$. 
+
+The LM test statistic is given by $TR^2$, where $T$ is the number of observations in the auxiliary regression and $R^2$ is computed from the auxiliary regression.  The LM test statistic will be larger as the explanatory power of the lagged residuals grows, in which case we are more likely to reject the null. The test statistic is distributed asymptotically as $\chi^2$ with $s$ degrees of freedom.  Because the appropriate number of lags is not known, it is important to consider multiple choices for $s$.  As a word of caution, note that the behavior of the LM test for serial correlation can be quite poor in small samples. 
+
+If we reject the null hypothesis of no serial correlation, then we have omitted important dynamics from the structural portion of the model and should add additional lags to the original specification, or possible additional regressors, e.g., interventions or a trend. (One may also use generalized least squares to correct for serial correlation when the regressors are strictly exogenous, but because serial correlation is generally an indication of dynamic misspecification, GLS estimation is seldom used in time series analysis.) An ACF and PACF of the residuals describe the pattern of correlations in the model errors and thus  provide diagnostic information regarding the nature of any omitted dynamic structure.  For example, if the autocorrelations exhibit a pattern of decay, it is likely that additional lags of $y$ and/or $\mathbf{x}$ need to be included in the model. The number of spikes in the PACF will suggest the number of lags that need to be added.  Spikes in either the ACF or PACF at fixed intervals suggest the possibility of omitted seasonality. And a single spike may suggest an omitted intervention. After augmenting the original specification, we retest for serial correlation in the new model, continuing until we arrive at a dynamically complete specification.
+
+One potential drawback of the LM test for serial correlation is that it is, in general, not valid in the presence of heteroscedastic disturbances. If heteroscedasticity is suspected, heteroscedastic-robust versions of the test such as the Cumby-Huizinga test (not available in R).
+
+To conduct the Breusch-Godfrey LM test in R we use the `bgtest()` function in the lmtest package.  We must specify the order (number of lags to be used for the test, $S$) and the type of test. Either "Chisq" or "F" is appropriate.   See ?bgtest for additional details.
+
+bgtest(formula, order = 1, order.by = NULL, type = c("Chisq", "F"),
+  data = list(), fill = 0)
+
++ `formula` a symbolic description for the model to be tested (or a fitted "lm" object).
++ `order` maximal order of serial correlation to be tested.
++  `order.by`	Either a vector z or a formula with a single explanatory variable like ~ z. The observations in the model are ordered by the size of z. If set to NULL (the default) the observations are assumed to be ordered (e.g., a time series).
++ `type` the type of test statistic to be returned. Either "Chisq" for the Chi-squared test statistic or "F" for the F test statistic.
++ `data` an optional data frame containing the variables in the model. By default the variables are taken from the environment which bgtest is called from.
++ `fill` starting values for the lagged residuals in the auxiliary regression. By default 0 but can also be set to NA.
+
+
+We will conduct this test over multiple `orders` to test for serial correlation over 24 lags (very generous),  12 (sensible to cover potential seasonlity), and 6 (to focus on short lags).
+
+```{r}
+bgtest(ADL1, order=24, type="Chisq")
+bgtest(ADL1, order=12, type="Chisq")
+bgtest(ADL1, order=6, type="Chisq")
+```
+
+We can with some confidence that we have not violated ATS5.
+
+## TS5: No Heteroscedasticy
+
+The variance of the error must be constant conditional on all observations on all variables in the model *at time $t$ only*.
+
+\[
+Var(\mu_t)|\mathbf{z_t}=\sigma_{\mu}^2.
+\]
+
+Violation of assumption ATS6 indicates that the regression model does not predict $y$ consistently across all values of $y$. Causes:
+
++ Model misspecification -- omitted variables, including trends and structural breaks, or incorrect functional form. 
++ If measurement error in $y$ lessens (or increases) over time.
++ The true data generating process itself is heteroscedastic, i.e., there are periods of low volatility and periods of high volatility in $y$. If these patterns are conditional -- they are a function of the previous error variance, then a class of generalized autoregressive conditionally heteroscedastic (GARCH) models can be exploited for better prediction.
+
+
+Tests for heteroscedasticity make use of the fact that the variance of the residuals from the estimated model is a consistent estimator of the error variance (White 1980). Under the null hypothesis of homoscedasticity, the error variance should not be a function of the explanatory variables in the model. As such, time series plots of regression residuals vs. predicted values (or individual explanatory variables) should not provide evidence of any patterns. 
+
+There are a couple of ways we can easily get these plots in R after running a regression. We can do it manually.
+
+```{r}
+plot(ADL1$fitted.values,ADL1$residuals)
+```
+
+Or we can use the `plot()` function, specifying the fit object. Set the which argument=1 to replicate the previous plot. The advantage of this plot is that it identifies the dates of outliers.
+
+```{r}
+plot(ADL1, which=1)
+```
+
+Here we see the three dates that are the biggest outliers. A little investigation suggests we may need pulse intervention variables for the November 1979 Iranian hostage crisis, Obama and Bush I's inaugural month, and (plausibly) the record day in the stock market in January 1990.  But let's conduct a formal diagnostic test before we consider adding these variables to the model.
+
+
+
+#### The Breusch-Pagan Test for Heteroscedasticity
+
+Breusch and Pagan developed an LM test for heteroscedasticity in which we fit an auxiliary regression where the squared residuals are regressed on the explanatory variables in the original model.  Assume again we have estimated the ADL(1,1;2) model given above. Estimate the auxiliary regression of $\hat{e^2}_t$ on the regressors included in the original regression.
+
+\begin{equation}
+\hat{e^2}_t = \gamma_{00} + \pi_{11}y_{t-1} + \gamma_{10} x_{1,t} + \gamma_{11}x_{1,t-1} +\gamma_{20} x_{2,t} + \gamma_{21}x_{2,t-1} + v_t
+\end{equation}
+where $\hat{e}_t$ are the residuals from the original regression.  
+
+The null hypothesis for the test is thus $\pi_{11} = \gamma_{10}=...=\gamma_{21}=0$. If the coefficient on any of the regressors is different from zero, then the variance is heteroscedastic. If they are jointly zero, $R^2$ of the model will be zero and the variance is (linearly) homoscedastic. 
+
+The regression can be used to compute a Lagrange multiplier test statistic given by $TR^2$, where $T$ is the number of observations in the auxiliary regression and $R^2$ is computed from the auxiliary regression. The test statistic is distributed $\chi^2$ with $n$ degrees of freedom where $n$ is the number of regressors in the auxiliary regression.   As with the LM test for serial correlation, the LM test statistic will be larger as the explanatory power of the regressors grows, in which case we are more likely to reject the null hypothesis and conclude the disturbances are heteroscedastic. 
+
+If the null hypothesis is rejected using these or alternative tests, the typical solution is to apply heteroscedasticity robust standard errors (also known as White or Huber-White standard errors) to the original regression (White 1980, Huber 1967). Heteroscedasticity robust standard errors use the squared residuals from the estimated regression model to estimate the error variances associated with each observation, which are then are used to produce consistent estimates of the standard errors. The use of heteroscedastic-consistent standard errors has become standard in applications where heteroscedasticity is suspected. 
+
+
+We use the `bptest()` function in the lmtest package. The only argument you will need is the model fit object.
+
+bptest(formula, varformula = NULL, studentize = TRUE, data = list())
+
++ `formula` a symbolic description for the model to be tested (or a fitted "lm" object).
++ `varformula` a formula describing only the potential explanatory variables for the variance (no dependent variable needed). By default the same explanatory variables are taken as in the main regression model.
++ `studentize` If set to TRUE Koenker's studentized version of the test statistic will be used.
++ `data` an optional data frame containing the variables in the model. By default the variables are taken from the environment which bptest is called from.
+
+
+```{r}
+bptest(ADL1)
+```
+
+
+
+It appears we have heteroscedasticity! The values of our regressors predict the variance of the residuals. 
+
+Let's reestimate the model with the additional intervention variables and retest.
+
+```{r}
+ADL2 <- dynlm(Approving~L(Approving,1) +  DSPIC96_pc_pca +L(DSPIC96_pc_pca, c(1,2))+ lei_pc + L(lei_pc, c(1,2)) + cei_pc + L(cei_pc, c(1,2)) 
+               + Reagan + BushI + Clinton + BushII + Obama + Trump  + Honey + Inaug +  RAss + IraqKuwait + Desert + Lehman + Sept11 + Mueller  + Impeach1 + Impeach2 + CovidP + CovidS + ObamaJan + BushJan  + hostages, data=AppEcon.ts)
+
+summary(ADL2)
+bptest(ADL2)
+```
+
+
+This didn't solve the problem, but as the coefficients are significant we will use heteroscedastic robust standard errors for hypothesis testing.
+
+### A Word on Heteroscedastic and Autocorrelation Consistent Standard Errors
+
+Newey (1987 and 1994) extended the logic of heteroscedastic robust standard error estimation to also allow for violations of the no serial correlation assumption to produce heteroscedastic and autocorrelation consistent, or HAC, standard errors.  The use of HAC standard errors is common in time series regressions with strictly exogenous regressors and they are applied in many unit root tests. They are not, however, frequently used in dynamic regressions with weakly exogenous regressors because serial correlation is generally treated as evidence of dynamic misspecification and because HAC standard errors are often so large as render them useless.  It is always possible, however, that the regression disturbances are serially correlated and heteroscedastic such that use of the combined heteroscedastic-autocorrelation-consistent, or HAC, standard errors may be a good strategy. In cases where ATS5 and ATS6 are not violated, the HAC standard errors will be equivalent to their OLS counterparts that assume serially uncorrelated and homoscedastic disturbances.
+
+To get heteroscastic robust or HAC standard errors in R we can use the `coeftest()` function, specifying the type of variance-covariance matrix of errors to use. Specifying vcov=`vcovHAC(FIT, type="HC1")` gives heteroscedastic robust variance-covariance matrix of errors and using vcov=`vcovHAC(FIT)` produces heteroscedastic and autocorrelation consistent variance-covariance matrix. 
+
+```{r, results='hide'}
+ADL2H <- coeftest(ADL2, vcov = vcovHAC(ADL2))# Heteroscedastic and autocorrelation consistent covariance matrix
+ADL2HAC <-coeftest(ADL2, vcov = vcovHC(ADL2, type="HC1")) # Heteroscedastic consistent covariance matrix
+```
+
+```{r, warning=FALSE, message=FALSE, results='asis'}
+LM2SE <-stargazer(ADL2, ADL2H, ADL2HAC, 
+                     type = "text", 
+                     title="ADL Regression Results",
+                     align=TRUE,
+                     style="ajs",
+                  column.labels =c("Normal SE", "H-Robust SE", "HAC SE"),
+                  dep.var.labels = c("Approval","Approval","Approval"),
+                  model.names = FALSE
+                  )
+```
+
+
+
+### Other Diagnostic Tests
+
+The OLS standard errors are asymptotically valid if ATS1-5 hold. If the residuals are normally distributed in sample, then they hold exactly. We've already seen evidence that the residuals are not normally distributed, likely due to a few outliers. We can test this formally using the `jarque.bera.test()` function in the tseries package.  The only argument is the residuals from the estimated model fit. Note, however, that unless the residuals are wildly non-normal, we can proceed without much threat to inference.
+
+```{r}
+
+hist(ADL2$residuals)
+jarque.bera.test(ADL2$residuals)
+```
+
+Ramsey's RESET is a regression specification error test testing the zero conditional mean assumption. It tests whether squares and cubes of the regressors predict the residuals (and thus $y_t$). This function `resettest()` is also in the lmtest package.  The first argument is the linear model fit object and we specify type="regressor".
+
+```{r}
+resettest(ADL2, type="regressor")
+```
+
+**It is a good strategy, if you have enough time points, to estimate the model on subsets of the data to see if the coefficients are stable. If not, likely you are missing something in the model specification!**
+
+We can use the `checkresiduals()` function in the forecast package to provide a set of diagnostics.
+
+checkresiduals(object, lag, df = NULL, test, plot = TRUE, ...)
+
++ `object`Either a time series model, a forecast object, or a time series (assumed to be residuals).
++ `lag` Number of lags to use in the Ljung-Box or Breusch-Godfrey test. If missing, it is set to min(10,n/5) for non-seasonal data, and min(2m, n/5) for seasonal data, where n is the length of the series, and m is the seasonal period of the data. It is further constrained to be at least df+3 where df is the degrees of freedom of the model. This ensures there are at least 3 degrees of freedom used in the chi-squared test.
++ `df`Number of degrees of freedom for fitted model, required for the Ljung-Box or Breusch-Godfrey test. Ignored if the degrees of freedom can be extracted from object.
++ `test` Test to use for serial correlation. By default, if object is of class lm, then test="BG". Otherwise, test="LB". Setting test=FALSE will prevent the test results being printed.
++ `plot` If TRUE, will produce the plot.
+
+```{r, message=FALSE}
+library(forecast)
+checkresiduals(ADL2, lag=12,test="BG")
+```
+
+
+

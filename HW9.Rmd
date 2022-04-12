@@ -1,0 +1,497 @@
+---
+title: "HW 9"
+subtitle: "PLSC 505"
+author: "Alex BI"
+date: "March 15, 2022"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '3'
+    code_folding: hide
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+  html_notebook:
+    number_sections: no
+    theme: cerulean
+    toc: yes
+    toc_depth: 3
+  word_document: null
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{=html}
+<style type="text/css">
+
+body{ /* Normal  */
+      font-size: 26px;
+  }
+td {  /* Table  */
+  font-size: 18px;
+}
+
+code.r{ /* Code block */
+    font-size: 14px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+}
+.nobullet li {
+  list-style-type: none;
+}
+}
+</style>
+```
+
+
+# Describe
+## the types of long-run equilibrium relationships we've discussed
+Case 1: The GECM model contains no constant, no trend
+
+The standard GECM model takes the form below : 
+$$\Delta y_t = \delta_0 +\delta_i\sum_{i=0}^q \Delta x_{t-i}+\theta_j\sum_{j=1}^p \Delta y_{t-j} + \pi t - \lambda y_{t-1} +\lambda \alpha + \lambda \gamma_t + \lambda \beta x_{t-1}+ \varepsilon_t$$
+In the first case, all constants in this theoretical model are 0. Therefore, $$ \delta_0 = \pi t = \lambda \alpha = \lambda \gamma_t = 0$$. Therefore, LRR is given by the form LRR = $$y_t - \frac{\lambda \beta}{\lambda}x_t $$.
+
+Therefore, the hull hypothesis is given by $H_0 : \lambda = \lambda\beta = 0$.
+
+Therefore, in this case we are testing whether coefficients of all our lagged y and the coefficient of all lagged x, are jointly 0. 
+
+Rewriting the formula using the notation on the slide : 
+GECM = $$\Delta y_t = \alpha_0^* + \delta t + \alpha_1^* y_{t-1}+\sum_{j=1}^k \beta_{j1}^* x_{jt-1}+\sum_{i=1}^p \phi_{i0} \Delta y_{t-i} + \sum_{j=1}^k \sum_{r=0}^{q_j} \beta_{j0}^* \Delta x_{jt-r}+\varepsilon_t$$
+
+$$ LRR = y_t - \sum_{j=1}^k \frac{\beta_{j1}^*}{\alpha_1^*}x_{jt}$$, $$H_0: \alpha_1^* = \beta_{j1}^* = 0$$
+As a result, cointegrating relationship is close to white noise, mena = 0, no trend. 
+
+Case 2: Constant Restricted to Long-Run relationship
+
+Using the process similar to case 1 above, we may reach the result that $$LRR = y_t - \sum_{j=1}^k \frac{\beta_{j1}^*}{\alpha_1^*}x_{jt}- \frac{\alpha_0^*}{\alpha_1^*}$$, where $\frac{\alpha_0^*}{\alpha_1^*}$ is the mean of the long run relationship. The null hypothesis is therefore $H_0: \alpha_0^* = \alpha_1^* = \beta_{j1}^* = 0$
+In this case we are testing whether coefficients of all our lagged y , the coefficient of all lagged x, and constant are jointly 0. 
+
+### Case3:
+
+In this case, the LRR is given by $ LRR = y_t - \sum_{j=1}^k \frac{\beta_{j1}^*}{\alpha_1^*}x_{jt}$, while $H_0: \alpha_1^* = \beta_{j1}^* = 0$ Note that these two representation is identical to those in case 1.Since our F-test is not testing whether there's a drift in the LRR. 
+
+
+### case 4: Restricted trend. 
+
+In this case, the LRR is given by $ LRR = y_t - \sum_{j=1}^k \frac{\beta_{j1}^*}{\alpha_1^*}x_{jt} - \frac{\delta}{\alpha_1^*} t$, while $H_0: \delta = \alpha_1^* = \beta_{j1}^* = 0, \forall j$  the trend in the LRR is represented by $\frac{\delta}{\alpha_1^*} t$
+
+### case 5: Unrestricted trend
+
+This case is mostly used for higher order trends in the raw data. 
+In this case, the LRR is given by $ LRR = y_t - \sum_{j=1}^k \frac{\beta_{j1}^*}{\alpha_1^*}x_{jt}$,since trends in the raw data are all outside the LRR.  
+while $H_0: \alpha_1^* = \beta_{j1}^* = 0$ Note that these two representation is identical to those in case 1.Since our F-test is not testing whether there's a drift in the LRR. 
+
+
+## Challenges and 4 approaches:
+
+### challenges: 
+
+
+1. There's uncertainty about how to specify a sensible (bal-
+anced) regression model that meets the TS regres-
+sion assumptions.
+
+2. There's uncertainty over how to test for assess the signifi-
+cance of long-run relationships: Do we test for coin-
+tegration or conditional stationary equilibria.
+
+3.There's a"grey area" between rejecting the null of no LRR and failing to reject the null. There's an area of uncertainty between them. 
+
+
+### 4 approaches: 
+
+1. If the conintegrating relationship has a zero mean and the first observation has a value of 0: Case 1 (highly unlikely)
+
+2. No evidence of trends : case 2
+
+3. Data is trending, case 3/4. If drift cancels, go to case 3. If the residual in the conintegrating relationship is trending, go to case 4. 
+
+4. if the data contain a quadratic trend, go to case 5. 
+
+
+
+# Discuss whether you believe stationary or cointegrating LRRs are plausible in your application or whether this is an open question and explain which of the 4 testing approaches for the existence of an LRR is (or are)  most appropriate and why. (Make reference to the results of unit root tests to support your argument.)
+Load packages.
+
+```{r, message=FALSE, warning=FALSE}
+library(dynlm)  # To run dynamic LS
+suppressPackageStartupMessages(library(stargazer)) # For table output
+library(lmtest) # for LM tests
+library(sandwich) # for various variance-covariance matrices
+library(dplyr) # to manipulate data frames
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(forecast) # for checkresiduals function
+library(tidyr) #functions to manipulate data
+library(lubridate)
+
+
+library(urca) 
+#install.packages("aTSA")
+library(grid)
+library(gridExtra)
+library(dynlm)
+library(tidyverse)
+library(ggthemes)
+library(astsa)
+library(strucchange)
+library(tseries)
+library(kableExtra)
+suppressPackageStartupMessages(source("/Users/alex/Downloads/PGTSadfv2.R"))
+```
+
+Read in the data, create **date** as date class, and filter to keep the
+first quarter of 1969 through the 4th quarter of 2010. The data is in
+the file "EconMood_v3.xls."
+
+```{r}
+#install.packages("gdata")
+suppressPackageStartupMessages(library(gdata))
+library(haven)
+#data = read_dta("/Users/alex/Downloads/UK Parties (1).dta")
+#data$date <- as.Date(paste(data$year, data$monthofyear, "1", sep = "/"))
+
+```
+
+
+```{r}
+
+dates <- seq(as.Date("2020-01-01"), as.Date("2020-12-31"), by=1)
+
+
+date_pop = data.frame(dates)
+date_pop$pop <- NA
+
+data<- read.csv("/Users/alex/Downloads/PLSC505_Pop/results_2020-06-15_505_Pop.csv")
+
+
+## read in Popularity data
+for(i in 1: 365){
+  counter  = 0
+  percent = 0
+  temp_string = paste("results_",as.character(dates[i]), "_505_Pop.csv",sep = "")
+  data<- read.csv(paste("/Users/alex/Downloads/PLSC505_Pop/",temp_string,sep = ""))
+  for(j in 1:length(data$text)){
+    if( grepl("BlackLivesMatter",data$text[j] ) |  grepl("BLM",data$text[j] ) | grepl("Black Lives Matter",data$text[j] ) ){
+        counter = counter + 1
+    }
+  }
+  percent = counter/length(data$text)
+  date_pop$pop[i] = percent 
+}
+
+summary(date_pop$pop)
+
+
+
+##READ IN SENTIMENT DATA
+dates <- seq(as.Date("2020-01-01"), as.Date("2020-12-31"), by=1)
+
+date_emo = data.frame(dates)
+for(i in 1: 365)
+{
+  temp_string = paste("results_",as.character(dates[i]), "_505.csv",sep = "")
+  data<- read.csv(paste("/Users/alex/Downloads/PLSC505/",temp_string,sep = ""))
+  date_emo$emo_avrg[i] = mean(data$neg_w)
+}
+
+
+ts_emo <- ts(date_emo$emo_avrg,start = decimal_date(as.Date("2020-01-01")), frequency = 365)
+ts_pop <- ts(date_pop$pop,start = decimal_date(as.Date("2020-01-01")), frequency = 365)
+#library(astsa) #tsplot and acf2 function
+				
+ggplot(data = date_emo, aes(x = dates, y = emo_avrg))+
+  geom_line(color = "#00AFBB", size = 1) + 
+  #scale_x_date(date_labels = "%b\n%Y", date_breaks = "4 year", ) +
+  labs(title="Negativity of Twitter sentiments on Police",
+       x="Dates", 
+       y="Percent Negativity", 
+       subtitle="January 1, 2020 through December 31, 2020")
+
+
+
+
+
+ts_emo <- ts(date_emo$emo_avrg,start = decimal_date(as.Date("2020-01-01")), frequency = 365)
+
+#library(astsa) #tsplot and acf2 function
+				
+ggplot(data = date_pop, aes(x = dates, y = pop))+
+  geom_line(color = "#00AFBB", size = 1) + 
+  #scale_x_date(date_labels = "%b\n%Y", date_breaks = "4 year", ) +
+  labs(title="Popularity of BLM movement related tags",
+       x="Dates", 
+       y="Popularity", 
+       subtitle="January 1, 2020 through December 31, 2020")
+
+
+
+data_TV<- read.csv("/Users/alex/Downloads/TV_Coverage.csv")
+
+dates <- seq(as.Date("2020-01-01"), as.Date("2020-12-31"), by=1)
+
+
+date_TV = data.frame(dates)
+date_TV$cov <- 0
+
+
+
+
+
+for(j in 0 : 8){
+  for( i in 1 : 366){
+    date_TV$cov[i]  = date_TV$cov[i] + data_TV$Value[i + 366 * j]
+  }
+}
+
+
+
+ggplot(data = date_TV, aes(x = dates, y = cov))+
+  geom_line(color = "#00AFBB", size = 1) + 
+  #scale_x_date(date_labels = "%b\n%Y", date_breaks = "4 year", ) +
+  labs(title="TV report frequency",
+       x="Dates", 
+       y="Frequency", 
+       subtitle="January 1, 2020 through December 31, 2020")
+
+
+
+
+```
+From three figures we can see that our dependent variable, the negativity of Twitter sentiments on police, does not contain a trend, and doesn't start with 0 value. Though our two independent variables, popularity of BLM related Twitter tags, and the frequency of BLM related TV reports starts with close to 0 value, their means is not 0 and we do not see trends. 
+
+
+
+We first conduct unit root tests on independent variable :popularity of BLM related Twitter tags .
+
+
+```{r}
+
+
+
+```
+
+
+# Conduct Unit Root Tests
+
+
+
+###Unit root test on first IV
+
+Use the DF test to determine whether variables are unit root processes. 
+
+I assume $D_t=c$ since I don't see trend in any of my three variables,
+$pmax = 14$, and test for serial correlation over 14 lags.
+
+```{r}
+adf.tests(date_pop$pop, pmax = 14, lmtestorder = 14, type = "constant")
+
+```
+
+Choose $p$ for test regression.
+
+-   LM p >0.05 for lag = 6 and above, suggesting we should pick lag = 7. 
+
+-   Could choose 0 based on AIC and BIC (not reasonable).
+
+-   t >1.60  when lag =5. 
+
+Here I will estimate the model with $p=7$, and rerun the model since picking lag = 7 is best for daily data as is includes weekly trends. 
+
+```{r}
+adf.tests(date_pop$pop, pmax = 7, lmtestorder = 14, type = "constant")
+
+```
+From the table we can see that we rejected the unit root null for one of our IV, popularity of BLM related Twitter tags.
+
+
+
+###Unit root test on second IV
+Similarly, conducting adf test on the other independent variable:  frequency of BLM related TV reports.
+
+
+```{r}
+
+adf.tests(date_TV$cov, pmax = 14, lmtestorder = 14, type = "constant")
+
+adf.tests(date_TV$cov, pmax = 7, lmtestorder = 14, type = "constant")
+
+
+
+
+```
+
+
+We barely reject the null of a unit root process for our second IV,  frequency of BLM related TV reports. We are not 100% sure this process doesn't contain a unit root. 
+
+
+###Unit root test of DV
+
+
+```{r}
+
+adf.tests(date_emo$emo_avrg, pmax = 14, lmtestorder = 14, type = "constant")
+adf.tests(date_emo$emo_avrg, pmax = 7, lmtestorder = 14, type = "constant")
+
+```
+Unit root null is rejected as well for our DV, average negativity of Twitter sentiments on police.
+
+Therefore, we may say that all our variables are unlikely to be unit root processes, but we are not so sure about one of our DV, frequency of BLM related TV reports.  
+
+
+
+
+
+#Stationary or conintegrating LRR?
+
+
+Since all our variables are stationary / most likely stationary, we believe it is appropriate to use stational LRR in our model. From previous results we can see that means of all three varialbes are not 0, therefore case 1 does not apply. Plots of our variables does not show obvious trends, and the processes are stationary, therefore case 2 is likely to be appropriate.  As for case 3 and 4, since non of the variables are trending, case 3 and 4 are not likely to apply. Quadratic trend is not applicable to our data as well. Therefore, case 2 is our choice to conduct F-test. 
+
+
+#Conduct the appropriate test and any additional tests a reviewer might ask for or that demonstrate the robustness of your findings to different assumptions about the univariate classification of your time series. 
+
+
+## GECM model
+
+first we need to estimate our ADL model and prove no serial correlation, then we rerwite it to GECM model
+
+Regarding form of deterministics: Theoretically, it is highly impossible that people's sentiment on police change with time. Moreover, we see that people's sentiment on police fall back to normal level quickly after an exogenous shock, namely George Floyd's death. Therefore, we may say that deterministics does not contain a trend.  
+
+
+```{r}
+
+date_emo$popul = date_pop$pop
+date_emo$cov = date_TV$cov
+date_emo$GF = 0
+
+
+date_emo $GF[141] = 1
+
+for(i in 141 : length(date_emo)){
+  date_emo $GF[i] = 1
+}
+
+date_emo$TV_cov = date_TV$cov
+
+ts_emo <- ts(date_emo,start = decimal_date(as.Date("2020-01-01")), frequency = 365)
+
+
+ADL_7S71 <- dynlm(emo_avrg ~ L(emo_avrg,c(1,7))+
+                     popul +L(popul, c(1,2,3,4,5,6,7))+TV_cov + L(TV_cov, c(1,2,3,4,5,6,7))+
+                     GF,start = decimal_date(as.Date("2020-01-08")),end=decimal_date(as.Date("2020-12-31")),data=ts_emo)
+summary(ADL_7S71)
+
+
+ADL_7S71 <- dynlm(emo_avrg ~ L(emo_avrg,c(1,7))+
+                     popul +L(popul, c(1,2,3,4,5,6,7))+TV_cov + L(TV_cov, c(1,3))+
+                     GF,start = decimal_date(as.Date("2020-01-08")),end=decimal_date(as.Date("2020-12-31")),data=ts_emo)
+summary(ADL_7S71)
+
+
+
+bgtest(ADL_7S71, order=24, type="Chisq")
+bgtest(ADL_7S71, order=12, type="Chisq")
+bgtest(ADL_7S71, order=6, type="Chisq")
+
+
+
+```
+
+
+From our first ADL model that includes TV coverage, we can see that TV coverage at time t-3 is significant, however it is only significant when coverage at time t-1 and t-2 are present, while these two are not significant. Therefore,  I think drop TV coverage is a better idea. 
+
+Rerunning our ADl model and get GECM model: 
+```{r}
+
+
+ADL_7S71 <- dynlm(emo_avrg ~ L(emo_avrg,c(1,7))+
+                     popul +L(popul, c(1,2,3,4,5,6,7))+
+                     GF,start = decimal_date(as.Date("2020-01-08")),end=decimal_date(as.Date("2020-12-31")),data=ts_emo)
+summary(ADL_7S71)
+
+
+bgtest(ADL_7S71, order=24, type="Chisq")
+bgtest(ADL_7S71, order=12, type="Chisq")
+bgtest(ADL_7S71, order=6, type="Chisq")
+
+
+
+
+
+
+```
+From the B-G test we can see that P>0.05, therefore we can say that the residuals are not serial correlated. 
+
+
+
+From the summary of first GECM model we can see that TV coverage does not play any significant role at all, therefore we drop this variable and rerun the model. (This variable is not included in previous models)
+```{r}
+
+
+GECM <- dynlm( d(emo_avrg) ~ L(emo_avrg,c(1,7)) + d(popul)+L(popul) +L(d(popul), c(1,2,3,4,5,6,7))
+                    +GF,start = decimal_date(as.Date("2020-01-08")),end=decimal_date(as.Date("2020-12-31")),data = ts_emo)
+
+summary(GECM)
+
+bgtest(GECM, order=24, type="Chisq")
+bgtest(GECM, order=12, type="Chisq")
+bgtest(GECM, order=6, type="Chisq")
+
+
+checkresiduals(GECM)
+
+
+
+```
+
+From the B-G test we can see that P>0.05 rejects the possibility of serial correlation in our GECM model, and the residuals are white noise. 
+
+
+## conduct t-test
+
+
+```{r}
+GECMHAC <- coeftest(GECM, vcov = vcovHAC(GECM))# Heteroscedastic and 
+
+stargazer(GECM, GECMHAC, type="text",
+          report = "vct*",
+          column.labels = "GECM")
+
+
+
+```
+
+From the table we can see that the t-statistics for testing cointegration between sentiment and topic popularity is t = 0.878, 
+is -8.040. We choose Case 2, I(0), k = 1, then the critical value(lower bound) is 3.15. Therefore, we failed to reject the null of no LRR. Hence we cannot say there are LRR between negative sentiment on police and BLM-related topic popularity. 
+
+##LRM
+
+```{r}
+sum_beta  = 0 
+ for(i in 1 : 7){
+   
+    sum_beta = sum_beta + ADL_7S71$coefficients[3 + i]
+ }
+
+sum_alpha = ADL_7S71$coefficients[2] + ADL_7S71$coefficients[3]
+
+sum_beta / (1-sum_alpha)
+
+
+```
+
+From the table we can see that the LRM of BLM related popularity is -5.877602. Therefore, we can say that 1% increase in topic popularity, decreases 5.88% sentiment negativity in the long run. 
+
+
+
+#Summarize
+
+
+From the code above, we can see that our model only involves stationary variables, and it seems that long run relationship does not occur between them. The long run multiplier of topic popularity is significant, showing that as more people joining BLM-related discussion, the general negative sentiments on police is greatly reduced. Therefore, this result corresponds to our assumption before conducting data analysis :smaller BLM-topic attentive user groups are sources of more extreme opinions on the police, while adding a more general population into our discussion actually mitigates the more extreme opinions. 
+
+

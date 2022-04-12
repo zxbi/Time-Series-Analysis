@@ -1,0 +1,558 @@
+---
+title: "Time Series Regression: Part 3 Cointegration"
+subtitle: "PLSC 505"
+author: "Professor Linn"
+date: "March 1, 2022"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '3'
+    code_folding: hide
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+  html_notebook:
+    number_sections: no
+    theme: cerulean
+    toc: yes
+    toc_depth: 3
+  word_document: null
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{=html}
+<style type="text/css">
+
+body{ /* Normal  */
+      font-size: 26px;
+  }
+td {  /* Table  */
+  font-size: 18px;
+}
+
+code.r{ /* Code block */
+    font-size: 14px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+}
+.nobullet li {
+  list-style-type: none;
+}
+}
+</style>
+```
+This help sheet introduces tests for cointegration among I(1) time
+series.
+
+# Preliminaries
+
+Load packages and read in the data:
+
+```{r, message=FALSE, warning=FALSE}
+library(dynlm)  # To run dynamic LS
+suppressPackageStartupMessages(library(stargazer)) # For table output
+library(msm) # for delta method
+library(lmtest) # for LM tests
+library(sandwich) # for various variance-covariance matrices
+library(dplyr) # to manipulate data frames
+library(ggplot2)
+library(rio)
+library(aTSA) # for cointegration test function
+library(egcm)
+library(dplyr)
+library(tidyr)
+library(forecast) # for checkresiduals function
+suppressPackageStartupMessages(source("PGTSadfv2.R")) 
+```
+
+```{r}
+suppressPackageStartupMessages(library(gdata))
+data = read.xls("EconMood_v3.xls")
+data$date <- seq(as.Date("1968/4/1"), as.Date("2011/10/30"), by = "quarter")
+data <- data %>%
+  filter(data<="2010/10/1")
+#out1 <- as.Date("1986-01-01")
+#data$out1 <- as.numeric(data$date %in% out1)
+#out2 <- as.Date("1994-01-01")
+#data$out2  <- as.numeric(data$date %in% out2)
+#out3 <- as.Date("2004-10-01")
+#data$out3  <- as.numeric(data$date %in% out3)
+
+dataQ <- read.csv("QuarterlyApproval.csv")
+dataQ$date <- as.Date(dataQ$date)
+dataQ <- dataQ %>%
+  filter(date >= "1968/4/1" & date <="2010/10/1")
+
+data <- cbind(data, Approving=dataQ$Approving)
+
+
+```
+
+# Plot the Time Series
+
+```{r, message=FALSE}
+df <- data %>%
+  select(date, Mood, PolAvg, filtbf) %>%
+  gather(key = "series", value = "value", -date)
+```
+
+```{r}
+ggplot(df, aes(x = date, y = value)) + 
+  geom_line(aes(color = series), size = 1) +
+   scale_x_date(date_breaks = "24 month", date_labels = "%b\n%Y")+
+  scale_color_manual(values = c("#00AFBB", "#E7B800","#E7AFBB", "#00B800"), name = "", 
+  labels =  c("Business Expectations", "Public Policy Mood", "Policy Outcomes")) +
+  theme_minimal() +
+  theme(legend.position="bottom") +
+  labs(title="",
+       x="Month", 
+       y="", 
+       subtitle="Fourth Quarter 1968 through Fourth Quarter 2011")
+```
+
+# Conduct Unit Root Tests
+
+Use the DF test to determine whether public policy mood (**Mood**),
+filetered business expectations (**filtbf**), and average liberalism of
+policy outcomes (**PolAvg**) are unit root processes.
+
+## Is Mood a Unit Root Process?
+
+Determine if **Mood** is a unit root process. Assume $D_t=c$.
+
+```{r}
+adf.tests(data$Mood, pmax = 8, lmtestorder = 12, type = "constant")
+```
+
+```{r}
+summary(ur.df(data$Mood, type="drift", lags = 4))
+```
+
+## Is PolAvg a Unit Root Process?
+
+```{r}
+adf.tests(data$PolAvg, pmax = 12, lmtestorder=12, type="constant")
+```
+
+```{r}
+adf.tests(data$PolAvg, pmax = 4, lmtestorder=12, type="constant")
+```
+
+## Is filtbf a Unit Root Process?
+
+```{r}
+adf.tests(data$filtbf, pmax = 24, lmtestorder=12, type="constant")
+```
+
+```{r}
+adf.tests(data$filtbf, pmax = 23, lmtestorder=12, type="constant")
+
+```
+
+## Conclusions
+
+We cannot reject the null hypothesis that each of these series are unit
+root processes, although it's not clear if **Mood** is or is not.
+
+# Engle-Granger Step 1
+
+## Estimate a Cointegrating Regression
+
+```{r}
+data.ts <- ts(data, start = c(1968,4), end = c(2010, 3), frequency = 4)
+data.ts2 <- as.zooreg(data.ts)
+```
+
+We need to decide the appropriate form of deterministics in the test
+regression.
+
+-   We want to include a constant to allow there to be a mean difference
+    between the series in equilibrium.
+
+-   A trend makes little sense (no series is drifting/trending), so we
+    will not include it in the test regression.
+
+-   Previous work suggests mood was impacted by the Vietnam war, the
+    Iraq wor, and the Iranian Hostage crisis, so we will allow the mean
+    of mood in equilibrium to vary with each intervention:
+
+    -   Values of **Vietnam**: 0, 0.03, 0.06, 0.09, 0.15, 0.24, 0.39,
+        0.64, 1, 1, 1, 1, 1, 1 (through 1975), 0, 0, 0 after.
+    -   Values of **Iraq**: 0 before first quarter 2003 and 1 after
+    -   Values of **IranHost**: 0 before fourth quarter 1979, then 1 for
+        6 quarters and then 0.64, 0.39, 0.24, 0.15, 0.09, 0.06, 0.03,
+        then 0 after.
+
+```{r}
+mystatic <- dynlm(Mood~ PolAvg +  filtbf + IranHost + Vietnam + Iraq, data=data.ts2)
+summary(mystatic)
+```
+
+## Test Residuals for Cointegration
+
+```{r}
+adf.tests(mystatic$residuals, pmax = 12, lmtestorder=12, type="none")
+```
+
+```{r}
+adf.tests(mystatic$residuals, pmax = 4, lmtestorder=12, type="none")
+```
+
+We need to use the tables here:
+<https://www.econstor.eu/bitstream/10419/67744/1/616664753.pdf> to
+identify the appropriate critical value for the test. Because the static
+regression included a constant, we will use Table 2 and consider
+$\tau_c$. For the residual-based test we use the case where N=\# of I(1)
+variables for which the null of no cointegration is being tested.
+Finally, we will use the 0.05 critical value.
+
+To compute the critical value we use the formula:
+$\beta_{\infty} + \beta_/T + \beta_/T^2 + \beta_/T^3$, where
+$\beta_{\infty}$ is the asymptotic critical value given the form of the
+test regression and the remaining $\beta_i$ are used to correct based on
+sample size. $T$ is based on the number of observations used for the
+residual test regression, here 162. Thus we have:
+
+1.  Find appropriate table based on whether there is a constant or
+    constant and trend in the test regression (Here just constant, table
+    2).
+2.  Find row for N=3. We will use alpha level of .05. Note the various
+    $\beta$ values. -3.74066
+    , -8.5631, -10.852, 27.982.
+3.  Sample size $T$: $T=162$
+4.  Calculate following formula for approximate critical value:
+    $q(T_i) = \beta_{\infty} + \beta_1(T_i)^{-1} + \beta_2(T_i)^{-2} - \beta_3(T_i)^{-3}$.
+
+$$ -3.74066- 8.5631/162 -10.852/(162^2) + 27.982/(162^3) = -3.793926.
+$$
+
+The test statistic value is -4.320. We can reject the null that the
+residuals are a unit root process at the 0.05 level of significnce and
+thus conclude the series are cointegrated.
+
+## An Alternative Test in R
+
+We can also use the Phillips Peron test with appropriate critical
+values. This is the Phillips- Ouliaris cointegration test.
+
+po.test(x, demean = TRUE, lshort = TRUE)
+
+-   x: a matrix or multivariate time series.
+-   demean: a logical indicating whether an intercept is included in the
+    cointegration regression or not.
+-   lshort: a logical indicating whether the short or long version of
+    the truncation lag parameter is used.
+
+```{r}
+suppressPackageStartupMessages(library(tseries))
+
+myci <- ts(cbind(data$Mood, data$PolAvg, data$filtbf, data$Vietnam, data$Iraq, data$IranHost))
+po.test(myci, lshort=TRUE)
+```
+
+## Dynamic OLS
+
+Which variables are part of the cointegrating relationship?
+
+```{r}
+myDOLS<- dynlm(Mood~  PolAvg +  L(d(PolAvg),-1)+ L(d(PolAvg),-2) +L(d(PolAvg),1) + L(d(PolAvg),2) + filtbf + L(d(filtbf),-1) + L(d(filtbf),-2) + L(d(filtbf),1)  + L(d(filtbf),2) +  IranHost + Vietnam + Iraq, data=data.ts2)
+
+myDOLSHAC <- coeftest(myDOLS, vcov = vcovHAC(myDOLS))
+```
+
+```{r}
+myDOLS2<- dynlm(Mood~ PolAvg +  filtbf + IranHost + Vietnam + Iraq + L(d(PolAvg),-1) + L(d(PolAvg),1)+ L(d(PolAvg),-2) + L(d(PolAvg),2) + L(d(PolAvg),-3) + L(d(PolAvg),3)+ L(d(PolAvg),-4) + L(d(PolAvg),4) + L(d(filtbf),-1) + L(d(filtbf),1) + L(d(filtbf),-2) + L(d(filtbf),2) + L(d(filtbf),-3) + L(d(filtbf),3) + L(d(filtbf),-4) + L(d(filtbf),4), data=data.ts2)
+myDOLSHAC2 <- coeftest(myDOLS2, vcov = vcovHAC(myDOLS2))
+
+stargazer(myDOLSHAC, myDOLSHAC2, type = "text")
+```
+
+We can use standard t-tests to test whether the levels variables and
+interventions enter the long run relationship. The results suggest
+**filtbf** is not part of the cointegerating relationship. Let's
+reestimate the static cointegrating regression without this variable.
+
+```{r}
+mystatic2 <- dynlm(Mood~ PolAvg + IranHost + Vietnam + Iraq, data=data.ts2)
+summary(mystatic2)
+
+```
+
+```{r}
+adf.tests(mystatic2$residuals, lmtestorder = 8, pmax=4, type = "none")
+```
+
+Test for cointegration:
+
+1.  Find appropriate table based on whether there is a constant or
+    constant and trend in the test regression (Here just constant, table
+    2).
+2.  Find row for N=2. We will use alpha level of .05. Note the various
+    $\beta$ values. -3.33613
+    , -6.1101, -6.823.
+3.  Sample size $T$: $T=162$
+4.  Calculate following formula for approximate critical value:
+    $q(T_i) = \beta_{\infty} + \beta_1(T_i)^{-1} + \beta_2(T_i)^{-2} - \beta_3(T_i)^{-3}$.
+
+$$ -3.33613 - 6.1101/162 -6.823/(162^2)  = -3.374107.
+$$
+
+The test statistic value is -4.166. Reject the null of no cointegration.
+
+We can calculate the disequilibrium from this regression as (or simply
+the residuals). I'm calculating them by "hand" here to maintain the
+number of observations in the data frame.:
+
+$y_{t-1} - D_{lr} + \lambda_{1} x_{1t} + \lambda_{2} x_{2t} + ...+ \lambda_{n} x_{nt}$
+
+```{r}
+data$static.DISEQ <- data$Mood -(mystatic2$coefficients[1] + mystatic2$coefficients[2]*data$PolAvg+ mystatic2$coefficients[3]*data$IranHost + mystatic2$coefficients[4]*data$Vietnam + mystatic2$coefficients[5]*data$Iraq)
+
+data.ts2$static.DISEQ <- mystatic2$residuals
+
+```
+
+We can compare this to the disequilibrium from a respecified DOLS.
+
+```{r}
+myDOLS3<- dynlm(Mood~ PolAvg  + IranHost + Vietnam + Iraq + L(d(PolAvg),-1) + L(d(PolAvg),1)+ L(d(PolAvg),-2) + L(d(PolAvg),2) + L(d(PolAvg),-3) + L(d(PolAvg),3)+ L(d(PolAvg),-4) + L(d(PolAvg),4), data=data.ts)
+myDOLSHAC3<- coeftest(myDOLS3, vcov = vcovHAC(myDOLS3))
+stargazer(myDOLSHAC3, type = "text")
+```
+
+$y_{t-1} - D_{lr} + \lambda_{1} x_{1t} + \lambda_{2} x_{2t} + ...+ \lambda_{n} x_{nt}$
+
+```{r}
+
+data$DOLS.DISEQ <- data$Mood -(myDOLS3$coefficients[1] + myDOLS3$coefficients[2]*data$PolAvg+ myDOLS3$coefficients[3]*data$IranHost + myDOLS3$coefficients[4]*data$Vietnam + myDOLS3$coefficients[5]*data$Iraq)
+
+data.ts2$DOLS.DISEQ <- data.ts2$Mood -(myDOLS3$coefficients[1] + myDOLS3$coefficients[2]*data$PolAvg+ myDOLS3$coefficients[3]*data$IranHost + myDOLS3$coefficients[4]*data$Vietnam + myDOLS3$coefficients[5]*data$Iraq)
+
+```
+
+Now let's check the correlation between the two measures of
+disequilibrium and plot the disequilibrium.
+
+```{r}
+cor(data.ts2$DOLS.DISEQ, data.ts2$static.DISEQ, use = "pairwise.complete.obs")
+
+```
+
+Almost the same!
+
+```{r}
+ggplot(data.ts2, aes (x = date, y = static.DISEQ)) + 
+  geom_line()+
+  geom_line(aes(x = date, y = DOLS.DISEQ), linetype = 2)
+
+```
+
+# Engle-Granger Step 2
+
+We can use the residuals from the static or DOLS regression in an ECM.
+To use the disequilibrium, we need to tell R that the data with these
+two variables is class ts
+
+```{r}
+data.ts <- ts(data, start = c(1968,4), end = c(2010, 3), frequency = 4)
+```
+
+```{r}
+second.step <- dynlm(d(Mood)~ L(DOLS.DISEQ)  + d(Vietnam) + d(IranHost) + d(Iraq) +  d(PolAvg) + d(filtbf)+  L(d(PolAvg),1) + L(d(filtbf),1) + L(d(Mood),1) + L(d(Mood),4)+ L(d(Mood),8), data=data.ts2)
+summary(second.step)
+bgtest(second.step, order=4)
+
+checkresiduals(second.step)
+```
+
+Here, *because we've determined the variables are cointegrated*, each
+righthand-side variable is stationary and we can use standard critical
+values for all hypothesis tests.
+
+We'll talk more about interpretation below.
+
+# GECM t-test
+
+To conduct the ECM t-test, we estimate the generalized error correction
+model where we include enough lagged changes in the variables to ensure
+the residuals are white noise.
+
+```{r}
+GECM <- dynlm(d(Mood)~ L(Mood)+ L(PolAvg)+
+                Vietnam + Iraq + IranHost+ 
+                d(Vietnam) + d(Iraq) + d(IranHost) + 
+                d(PolAvg) + L(d(PolAvg), 1) + d(filtbf) +  L(d(filtbf),1) +
+                L(d(Mood),1) + L(d(Mood),4) + L(d(Mood),8)
+              ,  data=data.ts2)
+
+
+GECMHAC <- coeftest(GECM, vcov = vcovHAC(GECM))# Heteroscedastic and 
+
+bgtest(GECM, order =4)
+
+checkresiduals(GECM)
+
+```
+
+```{r}
+plot(GECM, which=1)
+```
+
+```{r}
+stargazer(GECMHAC, type="text",
+          dep.var.labels = "Changes in Mood",
+          report = "vct*",
+          column.labels = "GECM")
+
+```
+
+Our interest in this test regression is on the t-statistic on lagged
+**Mood**, $\gamma$. Once again we need to identify the appropriate
+critical value using the MacKinnon tables (2010). Our GECM does not
+contain a trend but does contain a constant, so we will use table 3. We
+select the row for k=2 (two I(1) variables in our regression) Finally,
+we will use the 0.05 critical value.
+
+1.  Find appropriate table based on whether there is a constant and
+    trend (here just constant, table 2).
+2.  Find row for k equal to number of independent variables (not
+    deterministic). We have 2 will use alpha level of .05. Note the
+    various $\theta$ values: -4.7970, -4.7970, -9.04, -5.6, -66.
+3.  Compute adjusted sample size $T_a$: $T -(2*k-1) -d$:
+    163-(2\*2-1)-4=156
+4.  Calculate following formula for approximate critical value:
+    $q(T_i) = \theta_{\infty} + \theta_1(T_i)^{-1} + \theta_2(T_i)^{-2} - \theta_3(T_i)^{-3}$.
+
+$$
+-4.7970  -9.04/156 -5.6/(156^2) -66/(156^3) = -4.855196
+$$
+
+The t-statistic on $\hat{\alpha_1^*}$ in the ecm (the coefficient on
+lagged **Mood**, is -5.154, which is further from zero than the critical
+value. We can reject the null of no cointegration.
+
+# Interpretation
+
+```{r}
+stargazer(second.step, GECMHAC, type = "text",
+          title="Cointegration Error Correction Models",
+          dep.var.labels="Changes in Mood",
+          dep.var.caption = "",
+          model.names = FALSE,
+          column.labels=c("Two Step", "GECM"))
+```
+
+## Long Run Equilibrium
+
+```{r}
+LRRGECM <- GECM$coefficients[1]/(-GECM$coefficients[2]) + 
+  GECM$coefficients[3]*model.frame(GECM)$"L(PolAvg)"/(-GECM$coefficients[2]) +
+  GECM$coefficients[4]*model.frame(GECM)$Vietnam/(-GECM$coefficients[2])+ 
+  GECM$coefficients[5]*model.frame(GECM)$Iraq/(-GECM$coefficients[2])+ 
+  GECM$coefficients[6]*model.frame(GECM)$IranHost/(-GECM$coefficients[2])
+
+
+
+LRRGECM.ts <- ts(LRRGECM, start = c(1971,1), end = c(2010,3), frequency = 4)
+LRRStatic.ts <- ts(mystatic2$fitted.values, start = c(1968,4), end = c(2010,3), frequency = 4)
+LRRDOLS <- ts(myDOLS3$fitted.values, start = c(1970,1), end = c(2010,3), frequency = 4)
+
+LRE <- ts.union(LRRGECM.ts, LRRStatic.ts, LRRDOLS)
+LRE <- na.omit(LRE)
+LREdata <-data.frame(LRE=as.matrix(LRE), date=time(LRE))
+LRE.longer <- pivot_longer(LREdata, cols= -date, names_to="series", values_to="LRE")
+ggplot(LRE.longer, aes(x=date, y = LRE, color = series)) +
+  geom_line() 
+
+```
+
+## Impulse Response Functions
+
+```{r}
+PolAvg.cirf <- data.frame(period = c(0:20),
+                           PolAvgcIRF = NA_real_)
+
+#GECM$coefficients[2] = Lag Mood = -0.3031263
+#GECM$coefficients[3] = Lag PolAvg = -0.1165336  * 1 every period after zero
+#GECM$coefficients[10] = Delta PolAvg = -0.07515562  * 1 only at zero period
+#GECM$coefficients[11] = Lag Delta PolAvg = -0.1455531 * 1 only at first period
+#GECM$coefficients[14] = Lag Delta Mood = -0.05470087
+#GECM$coefficients[15] = Lag 4 Delta Mood =  0.1617978
+#GECM$coefficients[16] =  Lag 8 Delta Mood = 0.06149369 
+
+#Zero period
+PolAvg.cirf$PolAvgcIRF[1] <- (1 + GECM$coefficients[2])*0 + GECM$coefficients[3]*0 + GECM$coefficients[10]*1 +  GECM$coefficients[11]*0 + GECM$coefficients[14]*0 + GECM$coefficients[15]*0 + GECM$coefficients[16]*0 
+
+#First period after shock
+PolAvg.cirf$PolAvgcIRF[2] <- (1 + GECM$coefficients[2])*PolAvg.cirf$PolAvgcIRF[1] + GECM$coefficients[3]*1 + GECM$coefficients[10]*0 +  GECM$coefficients[11]*1 +
+GECM$coefficients[14]*PolAvg.cirf$PolAvgcIRF[1] + GECM$coefficients[15]*0 + GECM$coefficients[16]*0 
+
+#Second period after shock
+PolAvg.cirf$PolAvgcIRF[3] <- (1 + GECM$coefficients[2])*PolAvg.cirf$PolAvgcIRF[2] + GECM$coefficients[3]*1 + GECM$coefficients[10]*0 +  GECM$coefficients[11]*0 +
+GECM$coefficients[14]*(PolAvg.cirf$PolAvgcIRF[2]-PolAvg.cirf$PolAvgcIRF[1]) + GECM$coefficients[15]*0 + GECM$coefficients[16]*0 
+
+#Third period after shock
+PolAvg.cirf$PolAvgcIRF[4] <- (1 + GECM$coefficients[2])*PolAvg.cirf$PolAvgcIRF[3] + GECM$coefficients[3]*1 + GECM$coefficients[10]*0 +  GECM$coefficients[11]*0 +
+GECM$coefficients[14]*(PolAvg.cirf$PolAvgcIRF[3]-PolAvg.cirf$PolAvgcIRF[2]) + GECM$coefficients[15]*PolAvg.cirf$PolAvgcIRF[1] + GECM$coefficients[16]*0 
+
+#Fourth period after shock
+PolAvg.cirf$PolAvgcIRF[5] <- (1 + GECM$coefficients[2])*PolAvg.cirf$PolAvgcIRF[4] + GECM$coefficients[3]*1 + GECM$coefficients[10]*0 +  GECM$coefficients[11]*0 +
+GECM$coefficients[14]*(PolAvg.cirf$PolAvgcIRF[4]-PolAvg.cirf$PolAvgcIRF[3]) + GECM$coefficients[15]*(PolAvg.cirf$PolAvgcIRF[2]-PolAvg.cirf$PolAvgcIRF[1]) + GECM$coefficients[16]*0 
+
+#Fifth period after shock
+PolAvg.cirf$PolAvgcIRF[6] <- (1 + GECM$coefficients[2])*PolAvg.cirf$PolAvgcIRF[5] + GECM$coefficients[3]*1 + GECM$coefficients[10]*0 +  GECM$coefficients[11]*0 +
+GECM$coefficients[14]*(PolAvg.cirf$PolAvgcIRF[5]-PolAvg.cirf$PolAvgcIRF[4]) + GECM$coefficients[15]*(PolAvg.cirf$PolAvgcIRF[3]-PolAvg.cirf$PolAvgcIRF[2])+ GECM$coefficients[16]*0 
+
+#Sixth period after shock
+PolAvg.cirf$PolAvgcIRF[7] <- (1 + GECM$coefficients[2])*PolAvg.cirf$PolAvgcIRF[6] + GECM$coefficients[3]*1 + GECM$coefficients[10]*0 +  GECM$coefficients[11]*0 +
+GECM$coefficients[14]*(PolAvg.cirf$PolAvgcIRF[6]-PolAvg.cirf$PolAvgcIRF[5]) + GECM$coefficients[15]*(PolAvg.cirf$PolAvgcIRF[4]-PolAvg.cirf$PolAvgcIRF[3]) + GECM$coefficients[16]*0 
+
+#Seventh period after shock
+PolAvg.cirf$PolAvgcIRF[8] <- (1 + GECM$coefficients[2])*PolAvg.cirf$PolAvgcIRF[7] + GECM$coefficients[3]*1 + GECM$coefficients[10]*0 +  GECM$coefficients[11]*0 +
+GECM$coefficients[14]*(PolAvg.cirf$PolAvgcIRF[7]-PolAvg.cirf$PolAvgcIRF[6]) + GECM$coefficients[15]*(PolAvg.cirf$PolAvgcIRF[5]-PolAvg.cirf$PolAvgcIRF[4]) + GECM$coefficients[16]*PolAvg.cirf$PolAvgcIRF[1]
+
+#Periods 8+ after shock
+for (t in 9:21) {
+PolAvg.cirf$PolAvgcIRF[t] <-(1 + GECM$coefficients[2])*PolAvg.cirf$PolAvgcIRF[t-1] + GECM$coefficients[3]*1 + GECM$coefficients[10]*0 +  GECM$coefficients[11]*0 +
+GECM$coefficients[14]*(PolAvg.cirf$PolAvgcIRF[t-1]-PolAvg.cirf$PolAvgcIRF[t-2]) + GECM$coefficients[15]*(PolAvg.cirf$PolAvgcIRF[t-4]-PolAvg.cirf$PolAvgcIRF[t-5]) + GECM$coefficients[16]*(PolAvg.cirf$PolAvgcIRF[t-7]-PolAvg.cirf$PolAvgcIRF[t-8])
+
+  }
+
+
+#### Plot
+ggplot(data = PolAvg.cirf, aes(x = period, y = PolAvgcIRF)) +
+               geom_bar(stat = "identity") +
+               geom_hline(aes(yintercept = 0),
+                          colour = "#990000",
+                          linetype = "dashed") +
+               ylab("CIRF") +
+               xlab("Period") +
+               ggtitle("CIRF (PolAvg)") +
+               theme_bw()
+
+```
+
+```{r}
+PolAvg.irf <- data.frame(period = c(0:20),
+                           PolAvgIRF = NA_real_)
+
+#Zero period
+PolAvg.irf$PolAvgIRF[1] <- (1 + GECM$coefficients[2])*0 + GECM$coefficients[3]*0 + GECM$coefficients[10]*1 +  GECM$coefficients[11]*0 + GECM$coefficients[14]*0 + GECM$coefficients[15]*0 + GECM$coefficients[16]*0 
+
+currentvalue <- PolAvg.irf$PolAvgIRF[1]
+#Rest of periods
+for (t in 2:21) {
+    PolAvg.irf$PolAvgIRF[t] <- PolAvg.cirf$PolAvgcIRF[t] - PolAvg.cirf$PolAvgcIRF[t-1]
+    currentvalue <- PolAvg.irf$PolAvgIRF[t]
+}
+ggplot(data = PolAvg.irf, aes(x = period,y = PolAvgIRF)) +
+                geom_bar(stat = "identity") +
+                ylab("IRF") +
+                xlab("Period") +
+                ggtitle("Simple Impulse Response Function PolAvg") +
+                theme_bw()
+```

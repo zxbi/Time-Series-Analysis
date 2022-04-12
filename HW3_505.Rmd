@@ -1,0 +1,191 @@
+---
+title: "HW3_503"
+author: "Alex"
+date: "2/23/2022"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+###Part1 : Simulation
+
+
+```{r}
+#install.packages("sem")
+
+library(MASS)
+library(sem)
+library(car)
+
+
+```
+
+
+```{r}
+
+
+
+  
+simulations <- 400
+beta1_std_arr <- array(0, dim=simulations)
+x2_mean_arr<- array(0, dim=simulations)
+
+
+for (i in 1:simulations) {
+  n <- 20
+	x_1 <- rnorm(n)
+	x_2 = rnorm(n, mean = 5*(i-simulations/2)/simulations)
+	z <- array(rnorm(n*4), dim=c(n,4))
+	y <- 0.3*x_1 + 0.6*x_2 + 0.9*x_1*x_2 + rnorm(n)
+	mod <- lm(y ~ x_1 + x_2 + x_1 * x_2)
+	beta1_std_arr[i] = sqrt(vcov(mod)[2,2])
+	x2_mean_arr[i] = 5*(i-simulations/2)/simulations
+	#beta_1_arr[i] <- summary(mod)$coefficients[2]
+}
+
+
+#num = array(1:length(beta_0_arr))
+
+plot(x =x2_mean_arr ,y = beta1_std_arr,type = "l",xlab = "mean of X_2", ylab = "std error of beta_1")
+
+
+
+```
+
+From the graph we can see that $s.e. (\hat{\beta_1})_{min}$ is reached when mean of X_2 = 0.
+
+
+
+
+
+```{r}
+simulations <- 400
+beta1_std_arr <- array(0, dim=simulations)
+x2_mean_arr<- array(0, dim=simulations)
+
+
+for (i in 1:simulations) {
+  n <- 20
+	x_1 <- rnorm(n)
+	x_2 = rnorm(n, mean = 5*(i-simulations/2)/simulations)
+	z <- array(rnorm(n*4), dim=c(n,4))
+	y <- 0.5*x_1 + 0.5*x_2 -0.5 *x_1*x_2 + 3
+	mod <- lm(y ~ x_1 + x_2 + x_1 * x_2)
+	beta1_std_arr[i] = sqrt(vcov(mod)[2,2])
+	x2_mean_arr[i] = 5*(i-simulations/2)/simulations
+	#beta_1_arr[i] <- summary(mod)$coefficients[2]
+}
+
+
+#num = array(1:length(beta_0_arr))
+
+plot(x =x2_mean_arr ,y = beta1_std_arr,type = "l",xlab = "mean of X_2", ylab = "std error of beta_1")
+
+
+```
+From graphs we can see that S.E. and $\hat{\beta}$ are all stable for TSLS until values of correlation are  close to 0.8. On the other hand,  $\hat{\beta}$ converges to a point  > 1 when correaltion increases. S.E. of OLS increases as correlation increases as well 
+
+
+```{r}
+
+simulations <- 100
+beta_TSLS_array <- array(0, dim=simulations)
+SE_TSLS_array <- array(0, dim=simulations) 
+beta_OLS_array <- array(0, dim=simulations)
+SE_OLS_array <- array(0, dim=simulations) 
+
+for(j in 1 : 100){
+  
+  mean_SE_TSLS = 0
+  mean_SE_OLS = 0
+  mean_beta_TSLS = 0
+  mean_beta_OLS = 0
+  
+for(i in 1 : 100){
+  
+  
+  seed <- 1337 + 2 * i
+  set.seed(seed)
+
+  mu <- c(0,0,0) #<== X, Z, U
+
+  Sigma = matrix(c(1,0.8,0.4,0.8,1,0.8*(j-1)/(100 - 1),0.4,0.8*(j-1)/(100 - 1),1), nrow = 3, byrow = TRUE)
+  Vars = mvrnorm(500,mu,Sigma)
+  colnames(Vars) = c("X","Z","U")
+  Vars <- data.frame (Vars)
+  Vars$Y = 1 + Vars$X +Vars$U
+  OLS<- lm(Y~X, data = Vars)
+  TSLS<- tsls(Y~I(X), data = Vars, instruments = ~Z)
+  
+  
+  mean_SE_TSLS  = mean_SE_TSLS + sqrt(vcov(TSLS)[2,2])
+  mean_SE_OLS = mean_SE_OLS + sqrt(vcov(OLS)[2,2])
+  mean_beta_TSLS = mean_beta_TSLS + TSLS$coefficients[2]
+  mean_beta_OLS = mean_beta_OLS +  OLS$coefficients[2]
+  
+  
+}
+  
+  SE_TSLS_array[j]   = mean_SE_TSLS /100
+  SE_OLS_array[j]   =  mean_SE_OLS /100
+  beta_TSLS_array[j] = mean_beta_TSLS /100
+  beta_OLS_array[j] = mean_beta_OLS /100
+
+}
+
+
+plot(x = (1:100)*0.8/100,y = beta_TSLS_array,type = "l",xlab = "values of cor", ylab = "beta_hat in TSLS array")
+
+
+
+plot(x = (1:100)*0.8/100,y = beta_OLS_array,type = "l",xlab = "values of cor", ylab = "beta_hat in OLS array")
+
+
+plot(x = (1:100)*0.8/100,y = SE_TSLS_array,type = "l",xlab = "values of cor", ylab = "S.E. in TSLS array")
+
+plot(x = (1:100)*0.8/100,y = SE_OLS_array,type = "l",xlab = "values of cor", ylab = "S.E. in OLS array")
+
+
+
+
+
+```
+
+From results we can see that IV is no longer effective since the $\hat{\beta}$ of TSLS is no longer close to 1. Instead, the value of $\hat{\beta}$ in TSLS increases as correlation increases. $\hat{\beta}$ in OLS slightly converges, but not much. S.E. of TSLS reaches minimum when Cov(X,Z) ~0.3, but increases rapidly after that.  S.E. in the OLS model increases rapidly as Coc(X,Z) increases, 
+
+
+###Part2
+
+## Q1
+
+
+```{r cars}
+setwd("/Users/alex/Downloads")
+raw_data <- read.csv("PLSC503-2022-ExerciseFour.csv")
+
+raw_data$cal
+
+OLS1 <- lm(quality ~ price + malty + bitter + alcohol + calories  , data = raw_data)
+summary(OLS1)
+
+
+```
+
+From the simple OLS model we can see that maltiness and bitterness should affect quality, yet our model rejects such theory. Given our theory is correct, the model has something wrong. On the other hand, price is not significant as well. Only alcohol is significant in this model. In other words, this model tells us that only alcohol is related to a beer's quality. This makes no sense.(but makes a lot of sense for vodka).
+
+##Q2
+
+
+
+```{r}
+
+Iprice = lm(price~ craftbeer + alcohol + calories + malty + bitter, data = raw_data)
+summary(Iprice)
+
+
+
+TSLS<-lm(quality~ Iprice$fitted.values + malty + bitter + alcohol + calories, data = raw_data)
+
+summary(TSLS)
+```
+Running 2SLS we can see that price is not an IV of quality, which is true in our common sense. On the other hand, quality is decided by three significant IVs:  maltiness, bitterness, alcohol%. We can see that 1% increase in alcohol percentage leads to 9% increase in quality, outweighs all other IVs. The more bitter a beer is, the lower its quality. maltiness slightly increases quality by 0.39% for each 1% increase in maltiness. On the other hand, calories does not affect beer quality. 

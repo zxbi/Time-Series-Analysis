@@ -1,0 +1,817 @@
+---
+title: "HW7_505"
+author: "Alex"
+date: "2/27/2022"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '3'
+    toc_float: true
+    code_folding: hide
+    mathjax: "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS_CHTML.js"
+  html_notebook:
+    number_sections: no
+    theme: cerulean
+    toc: yes
+    toc_depth: 3
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+  word_document: null
+---
+
+
+
+```{r}
+
+ #graphing functions
+library(tidyr) #functions to manipulate data
+library(lubridate)
+
+
+library(urca) 
+#install.packages("aTSA")
+library(dynlm)
+library(dplyr)
+library(grid)
+library(gridExtra)
+library(dynlm)
+library(tidyverse)
+library(ggplot2)
+library(ggthemes)
+library(astsa)
+library(strucchange)
+library(lmtest)
+library(sandwich)
+library(tseries)
+library(kableExtra)
+source("/Users/alex/Downloads/PGTSadfv2.R")
+
+
+
+
+```
+### Data pre-processing
+
+
+
+```{r}
+dates <- seq(as.Date("2020-01-01"), as.Date("2020-12-31"), by=1)
+
+
+date_pop = data.frame(dates)
+date_pop$pop <- NA
+
+data<- read.csv("/Users/alex/Downloads/PLSC505_Pop/results_2020-06-15_505_Pop.csv")
+
+
+## read in Popularity data
+for(i in 1: 365){
+  counter  = 0
+  percent = 0
+  temp_string = paste("results_",as.character(dates[i]), "_505_Pop.csv",sep = "")
+  data<- read.csv(paste("/Users/alex/Downloads/PLSC505_Pop/",temp_string,sep = ""))
+  for(j in 1:length(data$text)){
+    if( grepl("BlackLivesMatter",data$text[j] ) |  grepl("BLM",data$text[j] ) | grepl("Black Lives Matter",data$text[j] ) ){
+        counter = counter + 1
+    }
+  }
+  percent = counter/length(data$text)
+  date_pop$pop[i] = percent 
+}
+
+
+
+
+##READ IN SENTIMENT DATA
+dates <- seq(as.Date("2020-01-01"), as.Date("2020-12-31"), by=1)
+
+date_emo = data.frame(dates)
+for(i in 1: 365)
+{
+  temp_string = paste("results_",as.character(dates[i]), "_505.csv",sep = "")
+  data<- read.csv(paste("/Users/alex/Downloads/PLSC505/",temp_string,sep = ""))
+  date_emo$emo_avrg[i] = mean(data$neg_w)
+}
+
+
+ts_emo <- ts(date_emo$emo_avrg,start = decimal_date(as.Date("2020-01-01")), frequency = 365)
+ts_pop <- ts(date_pop$pop,start = decimal_date(as.Date("2020-01-01")), frequency = 365)
+#library(astsa) #tsplot and acf2 function
+				
+ggplot(data = date_emo, aes(x = dates, y = emo_avrg))+
+  geom_line(color = "#00AFBB", size = 1) + 
+  #scale_x_date(date_labels = "%b\n%Y", date_breaks = "4 year", ) +
+  labs(title="Negativity of Twitter sentiments on Police",
+       x="Dates", 
+       y="Percent Negativity", 
+       subtitle="January 1, 2020 through December 31, 2020")
+
+
+
+
+
+ts_emo <- ts(date_emo$emo_avrg,start = decimal_date(as.Date("2020-01-01")), frequency = 365)
+
+#library(astsa) #tsplot and acf2 function
+				
+ggplot(data = date_pop, aes(x = dates, y = pop))+
+  geom_line(color = "#00AFBB", size = 1) + 
+  #scale_x_date(date_labels = "%b\n%Y", date_breaks = "4 year", ) +
+  labs(title="Popularity of BLM movement related tags",
+       x="Dates", 
+       y="Popularity", 
+       subtitle="January 1, 2020 through December 31, 2020")
+
+
+
+data_TV<- read.csv("/Users/alex/Downloads/TV_Coverage.csv")
+
+dates <- seq(as.Date("2020-01-01"), as.Date("2020-12-31"), by=1)
+
+
+date_TV = data.frame(dates)
+date_TV$cov <- 0
+
+
+
+
+
+for(j in 0 : 8){
+  for( i in 1 : 366){
+    date_TV$cov[i]  = date_TV$cov[i] + data_TV$Value[i + 366 * j]
+  }
+}
+
+
+
+ggplot(data = date_TV, aes(x = dates, y = cov))+
+  geom_line(color = "#00AFBB", size = 1) + 
+  #scale_x_date(date_labels = "%b\n%Y", date_breaks = "4 year", ) +
+  labs(title="TV report frequency",
+       x="Dates", 
+       y="Frequency", 
+       subtitle="January 1, 2020 through December 31, 2020")
+
+
+
+
+
+
+```
+
+(I added TV report frequency of related topics, but it does not have significant effects in any model)
+
+### Select the least general ADL that meets the time series regression assumptions. Explain your testing strategy.
+
+
+Information criteria let us choose lags up to 14, but t value let us choose between 5 and 6. Consider we are using daily data, and weekly patterns are important in process daily data, we try lag = 7, which is slightly larger than 5 and 6. 
+
+```{r}
+adf.tests(date_emo$emo_avrg, pmax = 14, lmtestorder = 12, type = "constant")
+
+```
+We will only use ADL in this HW. The first model is $Y_t = \sum_{i = 1}^{7} \beta_i Y_{t-i} + \sum_{i = 0}^{2} \gamma_{i+1} X_{t-i} + D_{GF} + \epsilon$ 
+
+```{r}
+
+date_emo$popul = date_pop$pop
+
+date_emo $GF = 0
+
+date_emo $GF[141] = 1
+
+for(i in 141 : length(date_emo)){
+  date_emo $GF[i] = 1
+}
+
+date_emo$TV_cov = date_TV$cov
+
+ts_emo <- ts(date_emo,start = decimal_date(as.Date("2020-01-01")), frequency = 365)
+
+
+
+
+
+ADL1<- dynlm(emo_avrg ~ L(emo_avrg,1)+
+               L(emo_avrg,2)+
+               #L(emo_avrg,3)+
+               #L(emo_avrg,4) +L(emo_avrg,5)+L(emo_avrg,6) +
+               L(emo_avrg,7) +  
+               #L(emo_avrg,8) +
+               #L(emo_avrg,9) +  
+                     popul +L(popul, c(1,2,7,9))+ 
+                     GF,data=ts_emo)
+
+
+
+
+
+
+summary(ADL1)
+
+
+
+
+```
+
+
+FRom the ADL  we can see that only the first and the 7th term of our DV, Twitter sentiment, is statistically significant.(This suggests a 7-day seasonality) On the other hand, despite the second lagged term of IV is significant, the first lagged term of IV is not.Therefore, we might want to exclude $X_{t-1}$ from the model.(can we ?) The structural break, namely the death of George Floyd, is statistically significant in creating a slope break. 
+
+Therefore, we take the model $Y_t =  \beta_i Y_{t-i}+ \beta_7 Y_{t-7}+  \gamma_{1} X_{t}+\gamma_{1} X_{t-2} +D_{GF} + \epsilon$ to test for assumptions.
+
+
+
+
+ ##test for TS1
+```{r}
+
+plot(ADL1$fitted.values,model.frame(ADL1)$emo_avrg)
+plot(ADL1$fitted.values,ADL1$residuals)
+
+
+```
+After plotting the observed versus predicted values from the estimated model, we see that points are almost  distributed around a 45 degree line. Our plots of residuals versus predicted values is distributed almost around 0.It looks good, but we will still look into other tests. 
+
+
+## RESET Test
+```{r}
+resettest(ADL1, power=2, type="regressor", data=AppEcon.ts)
+
+```
+
+The Null hypothesis is not rejected! Therefore, it suggests that we might included enough variables for analysis. 
+
+## EFP tests
+
+
+```{r}
+
+my_efp <- efp(ADL1, type="OLS-CUSUM", data=ts_emo)
+plot(my_efp)
+sctest(my_efp)
+
+
+```
+
+
+
+In the OLS-based CUSUM test , we have p >0.05, cannot reject the null hypothesis that residuals are NOT serial-correlated.Therefore, we can say that our noises are not serial correlated. 
+
+
+### TS2 
+
+```{r}
+
+summary(ADL1)
+
+anova(ADL1)
+
+```
+
+Coefficients of lagged Twitter sentiment are smaller than 1. Good. TS2 holds. 
+
+
+## TS3 
+
+We are testing the marginal model $X_t = \sum_{i=1}^{7}\gamma_i X_{t-i} +\beta_1 Y_t +\beta_2 Y_{t-7}  $
+
+```{r}
+Popularity <- dynlm( popul ~ L(popul, 1)+L(popul, 2)#+L(popul, 3)+L(popul, 4) + L(popul, 5)+L(popul, 6)
+                     +L(popul, 7)
+                     #+L(popul, 8)
+                     +L(popul, 9)
+                #+emo_avrg+L(emo_avrg,7)
+                  
+                     ,data = ts_emo)
+summary(Popularity)
+DIresids <- Popularity$residuals
+```
+Note that even though $X_{t-4}$ is not significant, we still include it in our model because substantively it makes more sense to do so. 
+
+## Check for no serial correlation
+```{r}
+
+bgtest(Popularity, order=21, type="Chisq")
+bgtest(Popularity, order=14, type="Chisq")
+bgtest(Popularity, order=7, type="Chisq")
+
+```
+The test for serial correlation has p value  > 0.05, therefore the errors are not serial correlated. 
+
+
+## Estimate Test Regression of residuals from conditional model on residuals from marginal model and lagged sentiment. 
+```{r}
+ExTest <- dynlm(ADL1$residuals~ Popularity$residuals + L(model.frame(ADL1)$emo_avrg))
+(RExTest <- summary(ExTest))
+
+
+
+```
+Residuals are not significant! However, it is understandable since Yt is affected by Xt with seasonality and Xt affected by Yt with seasonality. I would say such significance is caused by strong intercorrelation between Xs and Ys. 
+
+
+## Test the null hypothesis
+
+
+```{r}
+
+
+RExTest$r.squared*length(ExTest$residuals)
+qchisq(.10, 1, lower.tail=FALSE)
+qchisq(.05, 1, lower.tail=FALSE)
+qchisq(.01, 1, lower.tail=FALSE)
+
+
+```
+We may not reject weak exogeneity. Therefore, we should test for Xt, namely topic popularity. 
+
+## TS4 No Serial Correlation 
+
+
+```{r}
+
+bgtest(ADL1, order=21, type="Chisq")
+bgtest(ADL1, order=14, type="Chisq")
+bgtest(ADL1, order=7, type="Chisq")
+
+
+
+```
+We can reject the null that there are serial correlations since P > 0.05. 
+
+## TS5 : No Heteroscedasticy
+
+
+```{r}
+
+plot(ADL1, which=1)
+
+```
+Here we see that the red line is slightly (? if any) lower than 0. Therefore, we might unable to reject the null hypothesis of no heteroscedasticity, but we are not so sure. Let's use B-P test to test this again. 
+
+
+
+
+
+```{r}
+
+bptest(ADL1)
+```
+
+ P > 0.05, Running B-P test further affirms heteroscedasticity ! 
+ 
+ 
+Let’s reestimate the model with the additional lagged terms
+
+## Retest the model
+
+
+```{r}
+ADL2<- dynlm(emo_avrg ~ L(emo_avrg,c(1,2,7))+
+                     popul +L(popul, c(1,2,7,9))+
+                     GF,data=ts_emo)
+
+
+
+
+summary(ADL2)
+
+bptest(ADL2)
+
+```
+
+
+
+
+
+## heteroscastic robustness test
+
+```{r}
+
+ADL2H <- coeftest(ADL2, vcov = vcovHAC(ADL2))# Heteroscedastic and autocorrelation consistent covariance matrix
+ADL2HAC <-coeftest(ADL2, vcov = vcovHC(ADL2, type="HC1")) # Heteroscedastic consistent covariance matrix
+LM2SE <-stargazer(ADL2, ADL2H, ADL2HAC, 
+                     type = "text", 
+                     title="ADL Regression Results",
+                     align=TRUE,
+                     style="ajs",
+                  column.labels =c("Normal SE", "H-Robust SE", "HAC SE"),
+                  dep.var.labels = c("Sentiment","Sentiment","Sentiment"),
+                  model.names = FALSE
+                  )
+
+```
+
+From the table above we can see that there are only trivial changes to the estimation of DV, and using heteroscastic robust standard errors does not change the statistical significance of our model's coefficients.  
+
+
+## histogram of residuals
+
+```{r}
+
+hist(ADL2$residuals)
+jarque.bera.test(ADL2$residuals)
+
+```
+
+largely normal. Therefore,  we can proceed without much threat to inference. Using the test formally, we see that p < 0.05, the residuals are normally distributed in general. 
+
+
+
+
+
+## running RESET test again
+
+```{r}
+
+
+resettest(ADL2, type="regressor")
+```
+
+
+The RESET test is insignificant. Therefore, now we are not likely to miss something in our model. 
+
+
+```{r}
+
+library(forecast)
+checkresiduals(ADL1, lag=12,test="BG")
+
+
+```
+
+Therefore , our current model ADL2 looks good, and we can take it to our second part of HW
+
+
+###Test if we can drop some terms
+## F tests
+
+```{r}
+
+
+ADL_771 <- dynlm(emo_avrg ~ L(emo_avrg,c(1,2,3,4,5,6,7))+
+                     popul +L(popul, c(1,2,3,4,5,6,7))+
+                     GF,start = decimal_date(as.Date("2020-01-08")),end=decimal_date(as.Date("2020-12-31")), data=ts_emo)
+
+
+summary(ADL_771)
+
+
+ADL_661 <- dynlm(emo_avrg ~ L(emo_avrg,c(1,2,3,4,5,6))+
+                     popul +L(popul, c(1,2,3,4,5,6))+
+                     GF,start = decimal_date(as.Date("2020-01-08")), end=decimal_date(as.Date("2020-12-31")), data=ts_emo)
+
+
+summary(ADL_661)
+
+ADL_221 <- dynlm(emo_avrg ~ L(emo_avrg,c(1,2))+
+                     popul +L(popul, c(1,2))+
+                     GF,start = decimal_date(as.Date("2020-01-08")), end=decimal_date(as.Date("2020-12-31")), data=ts_emo)
+summary(ADL_221)
+
+ADL_111 <- dynlm(emo_avrg ~ L(emo_avrg,1)+
+                     popul +L(popul, 1)+
+                     GF,start = decimal_date(as.Date("2020-01-08")), end=decimal_date(as.Date("2020-12-31")), data=ts_emo)
+
+
+
+summary(ADL_111)
+
+ADL_7S71 <- dynlm(emo_avrg ~ L(emo_avrg,c(1,,2,7))+
+                     popul +L(popul, c(1,7,9))+
+                     GF,start = decimal_date(as.Date("2020-01-08")),end=decimal_date(as.Date("2020-12-31")),data=ts_emo)
+
+
+anova(ADL_771, ADL_661)
+anova(ADL_221, ADL_771)
+anova(ADL_111, ADL_771)
+
+
+
+
+
+
+
+
+```
+Based on the F test results, we can reject that $\beta_7 = 0$for our $X_{t-7}$ term, namely topic popularity a week ago. We can also see that removing more terms is also not good. 
+
+
+```{r}
+anova(ADL_771, ADL_7S71)
+
+
+```
+
+However, if we remove the 2-6th lagged term of $Y_t$, we cannot reject the null hypothesis, therefore these terms can be removed. 
+
+
+## test completeness for alternative model
+
+Since we've tested models with 1, and 2 lags in previous HW, we skip them for now (they are incomplete). We only test models with 6, 7 lags and seasonality model ADL(1,7,0)(7,0,0)
+
+ADL(6,6,1) test:
+
+```{r}
+bgtest(ADL_661, order=24, type="Chisq")
+bgtest(ADL_661, order=12, type="Chisq")
+bgtest(ADL_661, order=6, type="Chisq")
+
+
+```
+INCOMPLETE!
+
+
+ADL(7,7,1) test:
+```{r}
+bgtest(ADL_771, order=24, type="Chisq")
+bgtest(ADL_771, order=12, type="Chisq")
+bgtest(ADL_771, order=6, type="Chisq")
+
+
+```
+It's complete
+
+
+ADL(1,7,0)(7,0,0) test:
+
+```{r}
+
+bgtest(ADL_7S71, order=24, type="Chisq")
+bgtest(ADL_7S71, order=12, type="Chisq")
+bgtest(ADL_7S71, order=6, type="Chisq")
+```
+
+all p > 0.05. Therefore, null hypotheses are rejected. Both our new and old model is  dynamically complete. Therefore, we need to compare between two models : ADL(7,7,;1) and the ADL(7,7;1) with 2-6th lagged $Y_t$ removed.
+
+##AIC/BIC
+
+```{r}
+InfoAIC <- rbind(AIC(ADL_771),AIC(ADL_7S71))
+InfoBIC <- rbind(BIC(ADL_771), BIC(ADL_7S71))
+ModelName <- rbind("ADL(7,7;1)","ADL(1,7;1)(7,0,0)")
+InfoCr <- data.frame(ModelName, InfoAIC, InfoBIC)
+InfoCr
+
+```
+ADL(1,7;1)(7,0,0) is lower on both AIC and BIC. Therefore, we would choose it as our ideal model. This is also consistent with our F test results.
+
+
+###Select a final model. Discuss in a short paragraph your decision process.
+
+Our final model would be ADL(1,7,1)(7,0,0). First we start from ADL(7,7,0) which we selected from the previous HW.We tested its completeness as well. Then, We try to reduce lagged terms from 7, to 6, to ....to 1. However, we see that models with 1-6 lagged terms are all incomplete. Therefore, we seek improvements that doesn't reduce lagged terms for Yt and Xt at the same time. By looking at ADF test results, we found that first and 7th lag of Y_t is significant. Therefore, we estimate an ADL model with only the first and 7th lagged term of Yt, while keeping all 7 lagged terms of Xt. Checking for completeness and Information Criteria, we found that this is a better model compared to ADL(7,7,1) that we've estimated before. Also, the event variable GF is included, since the death of George Floyd gave rise to a huge public opinion trend both online and offline. 
+
+
+
+###Step Four: Interpret the results in a detailed paragraph that includes the following information
+
+
+```{r}
+ADL_7S71 <- dynlm(emo_avrg ~ L(emo_avrg,c(1,2,7))+
+                     popul +L(popul, c(1,2,7,9))+
+                     GF,start = decimal_date(as.Date("2020-01-08")),end=decimal_date(as.Date("2020-12-31")),data=ts_emo)
+
+summary(ADL_7S71)
+
+
+```
+
+
+From our final model we can see that one unit change in the average sentiment negativity on BLM related Tweets at time t-1 results in 0.50 units of increase in the negativity of sentiments at time t. We may say that half of the sentiment passes on to next day. On the other hand, sentiment at day t also inherits around 0.20 of sentiments a week ago, at time t-7.  Popularity of related topics, on the other hand, plays a more important role in affecting sentiments. popularity of related topics at time t-1 strongly affects Tweet sentiment at time t. 1% increase in topic popularity results in 3.94% increase in negative sentiments.In other words, people are more negative as topic popularity increases. Popularity of related topics in the whole week before day t has significant effects on sentiments as well.They slightly decreases negative sentiments , yet their effects are small compared to the effect of popularity at time t-1. Interestingly, the death of George Floyd reduces average sentiment negativity by a small yet significant amount. It is possible that more tweets are sent by media and get large amount of retweets. As a result, these tweets reduce overall negativity because of their relatively neutral tone. 
+
+
+###
+```{r}
+
+
+stargazer(ADL_7S71, type="text",
+          omit="GF")
+
+```
+
+
+## calculate LRM
+```{r}
+sum_beta  = 0 
+ for(i in 1 : 7){
+   
+    sum_beta = sum_beta + ADL_7S71$coefficients[3 + i]
+ }
+
+sum_alpha = ADL_7S71$coefficients[2] + ADL_7S71$coefficients[3]
+
+sum_beta / (1-sum_alpha)
+
+
+```
+
+The long-run multiplier of popularity on Twitter sentiment negativity is -1.79. Therefore, we can say that 1% increase in topic popularity, decreases 1.78% sentiment negativity in the long run. 
+
+
+## calculate std error
+
+```{r}
+library(msm)
+LRM.DI <- (sum_beta)/(1-sum_beta)
+LRM.DI.se <- deltamethod(~(x4+x5+x6+x7+x8+x9+x10)/(1-x2-x3), coef(ADL_7S71), cov=vcovHC(ADL_7S71, type="HC1"))
+print(paste("LRM DI = ", round(LRM.DI,2)))
+
+print(paste("LRM DI se = ", round(LRM.DI.se,2)))
+
+```
+The standard error for the effect of popoularity is 1.82. This suggests that variations in the effect of popularity is large. The standard deviation of 1% popularity increase is even larger than 1. 
+
+
+## IRF 
+
+```{r}
+
+DI.irf <- data.frame(period = c(0:49),
+                           DIIRF = NA_real_)
+
+
+
+DI.irf$DIIRF[1] <- ADL_7S71$coefficients[2]*0 + ADL_7S71$coefficients[3]*0+
+                                    ADL_7S71$coefficients[4]*1 +
+                                    ADL_7S71$coefficients[5]*0 +
+                                    ADL_7S71$coefficients[6]*0+
+                                    ADL_7S71$coefficients[7]*0+
+                                    ADL_7S71$coefficients[8]*0+
+                                    ADL_7S71$coefficients[9]*0+
+                                    ADL_7S71$coefficients[10]*0
+                                      
+                                      
+DI.irf$DIIRF[2] <- ADL_7S71$coefficients[2]*DI.irf$DIIRF[1] + ADL_7S71$coefficients[3]*0+
+                                    ADL_7S71$coefficients[4]*0 +
+                                    ADL_7S71$coefficients[5]*1 +
+                                    ADL_7S71$coefficients[6]*0+
+                                    ADL_7S71$coefficients[7]*0+
+                                    ADL_7S71$coefficients[8]*0+
+                                    ADL_7S71$coefficients[9]*0+
+                                    ADL_7S71$coefficients[10]*0
+DI.irf$DIIRF[3] <- ADL_7S71$coefficients[2]*DI.irf$DIIRF[2] + ADL_7S71$coefficients[3]*0+
+                                    ADL_7S71$coefficients[4]*0 +
+                                    ADL_7S71$coefficients[5]*0 +
+                                    ADL_7S71$coefficients[6]*1+
+                                    ADL_7S71$coefficients[7]*0+
+                                    ADL_7S71$coefficients[8]*0+
+                                    ADL_7S71$coefficients[9]*0+
+                                    ADL_7S71$coefficients[10]*0
+                                  
+DI.irf$DIIRF[4] <- ADL_7S71$coefficients[2]*DI.irf$DIIRF[3] + ADL_7S71$coefficients[3]*0+
+                                    ADL_7S71$coefficients[4]*0 +
+                                    ADL_7S71$coefficients[5]*0 +
+                                    ADL_7S71$coefficients[6]*0+
+                                    ADL_7S71$coefficients[7]*1+
+                                    ADL_7S71$coefficients[8]*0+
+                                    ADL_7S71$coefficients[9]*0+
+                                    ADL_7S71$coefficients[10]*0
+                                  
+DI.irf$DIIRF[5] <- ADL_7S71$coefficients[2]*DI.irf$DIIRF[4] + ADL_7S71$coefficients[3]*0+
+                                    ADL_7S71$coefficients[4]*0 +
+                                    ADL_7S71$coefficients[5]*0 +
+                                    ADL_7S71$coefficients[6]*0+
+                                    ADL_7S71$coefficients[7]*0+
+                                    ADL_7S71$coefficients[8]*1+
+                                    ADL_7S71$coefficients[9]*0+
+                                    ADL_7S71$coefficients[10]*0
+                                  
+DI.irf$DIIRF[6] <- ADL_7S71$coefficients[2]*DI.irf$DIIRF[5]+ ADL_7S71$coefficients[3]*0+
+                                    ADL_7S71$coefficients[4]*0 +
+                                    ADL_7S71$coefficients[5]*0 +
+                                    ADL_7S71$coefficients[6]*0+
+                                    ADL_7S71$coefficients[7]*0+
+                                    ADL_7S71$coefficients[8]*0+
+                                    ADL_7S71$coefficients[9]*1+
+                                    ADL_7S71$coefficients[10]*0
+                                  
+DI.irf$DIIRF[7] <- ADL_7S71$coefficients[2]*DI.irf$DIIRF[6] + ADL_7S71$coefficients[3]*1+
+                                    ADL_7S71$coefficients[4]*0 +
+                                    ADL_7S71$coefficients[5]*0 +
+                                    ADL_7S71$coefficients[6]*0+
+                                    ADL_7S71$coefficients[7]*0+
+                                    ADL_7S71$coefficients[8]*0+
+                                    ADL_7S71$coefficients[9]*0+
+                                    ADL_7S71$coefficients[10]*1
+                                  
+
+                                  
+
+                          
+
+
+#Periods 4-36
+for (t in 8:50) {
+        DI.irf$DIIRF[t] <- ADL_7S71$coefficients[2]*DI.irf$DIIRF[t-1] +ADL_7S71$coefficients[3]*DI.irf$DIIRF[t-7] 
+                                    
+}
+
+ggplot(data = DI.irf, aes(x = period,y = DIIRF)) +
+               geom_bar(stat = "identity") +
+               geom_hline(aes(yintercept = 0),
+                          colour = "#990000",
+                          linetype = "dashed") +
+               ylab("IRF") +
+               xlab("Period") +
+               ggtitle("Impulse Response Function Plot (Disposable Income Growth)") +
+               theme_bw()
+
+
+
+
+```
+Impulse Response Function Plot of Popularity. From the graph we can see that its impact is strongest when period is 1, then its effect decays exponentially while also oscillating around 0. It means its effect is unstable and decays rapidly. 
+
+##CIRF
+
+```{r}
+DI.cirf <- data.frame(period = c(0:50),
+                           cDIIRF = NA_real_)
+
+DI.cirf$cDIIRF[1] <- ADL_7S71$coefficients[2]*0 +ADL_7S71$coefficients[3]*0+ 
+                              ADL_7S71$coefficients[4]*1 +
+                                    ADL_7S71$coefficients[5]*0 +
+                                    ADL_7S71$coefficients[6]*0+
+                                    ADL_7S71$coefficients[7]*0+
+                                    ADL_7S71$coefficients[8]*0+
+                                    ADL_7S71$coefficients[9]*0+
+                                    ADL_7S71$coefficients[10]*0
+currentvalue <- DI.cirf$cDIIRF[1]
+#Rest of periods
+for (t in 2:49) {
+
+    DI.cirf$cDIIRF[t] <- DI.irf$DIIRF[t] +
+                                 currentvalue
+}
+    
+    ggplot(data = DI.cirf, aes(x = period, y = cDIIRF)) +
+                geom_bar(stat = "identity") +
+                ylab("CIRF") +
+                xlab("Period") +
+                ggtitle("Cumulative Impulse Response Function Plot (Disposable Income Growth)") +
+                theme_bw()
+```
+This graph may seem odd at first glace, but it makes sense. The spike at period = 2 implies the initial strong effect of Xt, Popularity, while the decrease in the next few periods shows that the effect is oscillating and unstable. Then the absolute value of popularity's effect quickly decays to 0, results in the mostly stable CIRF graph in later periods. 
+
+## Mean and Median lag Length
+
+Since LRM growth is 0.64, the first value that is larger than 0.64  is the first term. Therefore, the median lag length is 1. 
+```{r}
+
+DI.cirf$cDIIRF
+
+```
+
+```{r}
+DI.cirf$cDIIRF/LRM.DI
+which.max((DI.cirf$cDIIRF/LRM.DI)>=0.5)
+which.max((DI.cirf$cDIIRF/LRM.DI)>=0.97)
+
+
+```
+
+Both mean and media lag length are 1. This is understandable because Popularity effects on Twitter pays off immediately!
+
+## Long Run Equilibrium
+
+```{r}
+
+
+means <- date_emo %>%
+  filter(dates>"2020-01-08"&dates<"2020-12-31") %>%
+  summarise(Neg.Bar= mean(emo_avrg), Pop.bar=mean(popul))
+means
+
+
+
+```
+Average value of negativity and average value of popularity are shown above. 
+
+```{r}
+App.Equil <- (ADL_7S71$coefficients[1] + 
+  (ADL_7S71$coefficients[4] + ADL_7S71$coefficients[5]+ ADL_7S71$coefficients[6]+ ADL_7S71$coefficients[7]+ ADL_7S71$coefficients[8]+ ADL_7S71$coefficients[9]+ ADL_7S71$coefficients[10])*means$Pop.bar)/(1- ADL_7S71$coefficients[2] -ADL_7S71$coefficients[3])
+App.Equil
+
+
+
+App.Equil <- (ADL2$coefficients[1] + 
+  (ADL2$coefficients[8] + ADL2$coefficients[9]+ ADL2$coefficients[10]+ ADL2$coefficients[11]+ ADL_7S71$coefficients[12]+ ADL2$coefficients[13]+ ADL2$coefficients[14])*means$Pop.bar)/(1- ADL2$coefficients[2] -ADL2$coefficients[3]-ADL2$coefficients[4]-ADL2$coefficients[5]-ADL2$coefficients[6]-ADL2$coefficients[7])
+App.Equil
+
+
+
+```
+
+
+
+The quilibrium value is 0.1427736, which means, theoretically a unit increase in popularity would result in 0.1427736 units of increase in negativity on average. However, this value only has limited value given the effect of popularity decays exponentially. 
+
+###Error Correction Rate
+
+```{r}
+ADL_7S71$coefficients[2] +ADL_7S71$coefficients[3] -1
+```
+
+The error correction rate of this model is -0.3042829 . This number suggests that 30% of any diseqiuilibrium is corrected in the first period, another 30% in the next period and so on.

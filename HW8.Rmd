@@ -1,0 +1,539 @@
+---
+title: "HW 8"
+subtitle: "PLSC 505"
+author: "Alex BI"
+date: "March 15, 2022"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '3'
+    code_folding: hide
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+  html_notebook:
+    number_sections: no
+    theme: cerulean
+    toc: yes
+    toc_depth: 3
+  word_document: null
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{=html}
+<style type="text/css">
+
+body{ /* Normal  */
+      font-size: 26px;
+  }
+td {  /* Table  */
+  font-size: 18px;
+}
+
+code.r{ /* Code block */
+    font-size: 14px;
+}
+pre { /* Code block - determines code spacing between lines */
+    font-size: 14px;
+}
+.nobullet li {
+  list-style-type: none;
+}
+}
+</style>
+```
+# Preliminaries
+Load packages.
+
+```{r, message=FALSE, warning=FALSE}
+library(dynlm)  # To run dynamic LS
+suppressPackageStartupMessages(library(stargazer)) # For table output
+library(lmtest) # for LM tests
+library(sandwich) # for various variance-covariance matrices
+library(dplyr) # to manipulate data frames
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(forecast) # for checkresiduals function
+suppressPackageStartupMessages(source("/Users/alex/Downloads/PGTSadfv2.R"))
+```
+
+Read in the data, create **date** as date class, and filter to keep the
+first quarter of 1969 through the 4th quarter of 2010. The data is in
+the file "EconMood_v3.xls."
+
+```{r}
+#install.packages("gdata")
+suppressPackageStartupMessages(library(gdata))
+library(haven)
+
+data = read_dta("/Users/alex/Downloads/UK Parties (1).dta")
+
+
+
+data$date <- as.Date(paste(data$year, data$monthofyear, "1", sep = "/"))
+
+
+
+
+
+```
+
+We need either a ts class data object or a zoo class for the `dynlm()`
+function. I've done both here and will use the zoo class data frame in
+what follows. The advantage of zoo class is that you can add variables
+in the same manner as a data frame.
+
+# Plot the Time Series
+
+```{r, message=FALSE}
+data.ts <- ts(data, start = c(1997,5), end = c(2010, 4), frequency = 12)
+data.ts2 <- as.zooreg(data.ts)
+
+data$date <- as.Date(paste(data$year, data$monthofyear, "1", sep = "/"))
+
+df <- data %>%
+  select(date, mvilab, mgvldrsat, moppldrsat, meoi) %>%
+  gather(key = "series", value = "value", -date)
+
+```
+
+```{r}
+
+
+
+ggplot(df, aes(x = date, y = value)) + 
+  geom_line(aes(color = series), size = 1) +
+   scale_x_date(date_breaks = "24 month", date_labels = "%b\n%Y")+
+  scale_color_manual(values = c("blue", "green","yellow", "red"), name = "", 
+  labels =  c("Labor Vote Intention", "PM Approval", "Opposition Approval", "Economic Optimism")) +
+  theme_minimal() +
+  theme(legend.position="bottom") +
+  labs(title="",
+       x="Month", 
+       y="", 
+       subtitle="May 1997 through April 2010")
+
+
+```
+
+Each of the series appears to deviate from its mean value for extended
+periods of time, suggestive of random walks. The figure might also
+suggest that public policy mood is in sync with economic expectations
+and inversely related to policy outcomes, as theorized.
+
+# Conduct Unit Root Tests
+
+Use the DF test to determine whether variables are unit root processes. 
+
+# Is mvilab a Unit Root Process?
+I assume $D_t=c$,
+$pmax = 8$, and test for serial correlation over 12 lags.
+
+```{r}
+adf.tests(data$mvilab, pmax = 8, lmtestorder = 12, type = "constant")
+
+```
+
+Choose $p$ for test regression.
+
+-   All LM p >0.05, no serial correlation
+
+-   Could choose 1 or 2 based on AIC and BIC.
+
+-   t all smaller than 1.60 
+
+Here I will estimate the model with $p=2$, and rerun the model 
+
+```{r}
+adf.tests(data$mvilab, pmax = 2, lmtestorder = 12, type = "constant")
+```
+
+
+We cannot reject the unit root null, therefore it is very likely that Labor Vote intention is a unit root process. 
+
+
+
+# Is mgvldrsat (PM approval) a Unit Root Process?
+
+I again assume $D_t=c$,
+$pmax = 8$, and test for serial correlation over 12 lags.
+
+
+```{r}
+adf.tests(data$mgvldrsat, pmax = 8, lmtestorder=12, type="constant")
+```
+
+Choose $p$ for test regression.
+
+-   t value suggests we pick lags = 2
+
+-   Could choose 2 based on AIC.
+
+No evidence of serial correlation. Estimate the model with p = 2
+$p=2$.
+
+```{r}
+adf.tests(data$mgvldrsat, pmax = 2, lmtestorder=12, type="constant")
+```
+
+We fail to reject the null of a unit root. Therefore, mgvldrsat is a unit root process. 
+
+# Is moppldrsa a Unit Root Process?
+
+```{r}
+adf.tests(data$moppldrsat, pmax = 8, lmtestorder=12, type="constant")
+
+```
+
+
+Choose $p$ for test regression.
+
+-   t < 1.60 for all lags
+
+-   Could choose 3 based on AIC.
+
+No evidence of serial correlation when  lag > 0. Estimate the model with p = 3
+
+```{r}
+
+adf.tests(data$moppldrsat, pmax = 3, lmtestorder=12, type="constant")
+
+
+```
+
+
+We fail to reject the null of a unit root when lag = 3. Therefore, moppldrsat is a unit root process. 
+
+# Is meoi a unit root process?
+
+```{r}
+
+adf.tests(data$meoi, pmax = 12, lmtestorder=12, type="constant")
+```
+-   From  t value wen can select  lag = 6
+-   From AIC we can also select lag = 6
+
+rerunning the test with lag = 6:
+
+```{r}
+adf.tests(data$meoi, pmax = 6, lmtestorder=12, type="constant")
+```
+p < 0.05 when lag = 6, the unit root null is only rejected when lag = 6 and lag = 0. LM p-value > 0.05, therefore we can reject serial correlation.  Let's rerun with two lags since t value suggest we can pick lag = 2. 
+
+```{r}
+
+adf.tests(data$meoi, pmax = 2, lmtestorder=12, type="constant")
+
+```
+We cannot reject unit root. Therefore, it is very likely that this is a unit root process (though not entirely sure).
+
+
+
+# Engle-Granger Step 1
+
+## Estimate a Cointegrating Regression
+
+$$
+Vote_t = D_{lr} + \lambda_1 PM\_Approval_t + \lambda_2 Oppo\_Approval_t + \lambda_3 Econ\_Opti_t + \mu_t
+$$
+
+
+-  Theoretically, vote intention should not include a trend, thus we want to include a
+    constant, $\lambda_0$ to e our $D_{lr}$
+
+-   A trend makes little sense (no series is drifting/trending), so we
+    will not include it in the test regression.
+
+$$
+Mood_t = \lambda_0 + \lambda_1 filtbf_t + \lambda_2 PolAvg_t + \mu_t
+$$
+
+Estimate the cointegrating regression:
+
+```{r}
+model1 <- dynlm(mvilab ~ mgvldrsat +  moppldrsat + meoi, data=data.ts2)
+summary(model1)
+
+```
+
+--We cannot conduct hypothesis tests on individual
+coefficients in this regression!
+
+## Test Residuals for Cointegration
+
+Having estimated the cointegrating regression, our next task is to
+determine whether the residuals are stationary. Thus, we test for cointegration using a
+unit root test applied to the residuals from the cointegrating
+regression. We will use a Dickey-Fuller test, but we could use other
+unit root tests as well.
+
+
+
+```{r}
+adf.tests(model1$residuals, pmax = 12, lmtestorder = 12, type = "none")
+
+```
+
+Eight lags seems a good choice based on the t-statistic
+on the highest lagged difference. AIC/BIC choose lag = 1. 
+
+I rerun the test with $pmax=8$ 
+
+```{r}
+adf.tests(model1$residuals, pmax = 8, lmtestorder = 12, type = "none")
+
+length(data$meoi)
+```
+
+The value of our test statistic is -2.490 for p = 8.
+
+### Critical values of Dickey Fuller Test
+ We need 3 pieces of information to use the table:
+
+1.  Which test statistic, i.e., which table of critical values? Because
+    the static regression included only a constant, we will use Table 2 and
+    consider $\tau_c$.
+2.  $n$. For the residual-based test we use the case where $N$ is the
+    number of $I(1)$ variables for which the null of no cointegration is
+    being tested (3). In our case, N = 3.
+3.  $T$. $T$ is the sample size used for the cointegrating regression
+    which is 156.
+
+We will use the 0.05 critical value.
+
+To compute the critical value we use the formula:
+$\beta_{\infty} + \beta_/T + \beta_/T^2 + \beta_/T^3$, where
+$\beta_{\infty}$ is the asymptotic critical value given the form of the
+test regression and the remaining $\beta_i$ are used to correct based on
+sample size. $T$
+
+
+1.  Find the appropriate table based on whether there is a constant or
+    constant and trend in the test regression (Here just constant, table
+    2).
+2.  Find row for N=3. We will use alpha level of .05. Note the various
+    $\beta$ values. -3.74066 , -8.5631, -10.852, 27.982.
+3.  Sample size $T$: $T=156$.
+4.  Calculate the following formula for the approximate critical value:
+    $q(T_i) = \beta_{\infty} + \beta_1(T_i)^{-1} + \beta_2(T_i)^{-2} - \beta_3(T_i)^{-3}$.
+
+$-3.74066 - 8.5631/156 -10.852/(156^2) + 27.982/(156^3) = −3.799406$ based on numbers from the table. 
+
+
+The test statistic value is -2.490. Thus, we fail to reject the null of
+no cointegration, i.e., we fail to reject the null that the residuals
+follow a unit root process at the 0.05 level of significance and thus
+conclude the series are not cointegrated. 
+
+
+## Dynamic OLS
+
+
+
+$$
+y_t = D_{lr} + \lambda_{1} x_{1t} + \lambda_{2} x_{2t} + ...+\lambda_{n} x_{nt} + \sum_{j=1}^n  \sum_{s=1}^r \eta_{js} \Delta x_{jt\pm s} +\mu_t
+$$
+
+where $r$ is large enough to ensure the regressors are not correlated
+with the error. Including the additional lag and lead terms soaks up the
+long-run correlation between the regressors and the errors. As a result,
+the bias in the estimates of the long-run relationship tend to be
+smaller in DOLS than in the static cointegrating regression. Moreover,
+we can test restrictions on the cointegrating vector using Newey-West
+heteroscedastic and autocorrelation consistent standard errors.
+
+I've estimated this equation setting $r=2$ and $r=4$.
+
+```{r}
+
+
+myDOLS_2<- dynlm(mvilab ~ mgvldrsat +  L(d(mgvldrsat),c(-1, -2, 1, 2)) + moppldrsat + L(d(moppldrsat),c(-1, -2, 1, 2)) + meoi + L(d(meoi),c(-1, -2, 1, 2)), data=data.ts2)
+
+myDOLSHAC_2 <- coeftest(myDOLS_2, vcov = vcovHAC(myDOLS_2))
+```
+
+```{r}
+myDOLS_4<- dynlm(mvilab~ mgvldrsat +  moppldrsat + meoi +  L(d(mgvldrsat),c(-1, -2, -3, -4, 1, 2,3,4)) + L(d(moppldrsat),c(-1, -2, -3, -4, 1, 2,3,4)) + L(d(meoi),c(-1, -2, -3, -4, 1, 2,3,4)), data=data.ts2)
+myDOLSHAC_4 <- coeftest(myDOLS_4, vcov = vcovHAC(myDOLS_4))
+
+
+stargazer(myDOLSHAC_2, myDOLSHAC_4, type = "latex")
+```
+
+From the table we can see that all three variables are part of the cointegration.
+
+
+
+# Engle-Granger Step 2
+
+Cointegration implies that the any disequilibrium should drive **Vote**
+to change to restore the long-run cointegrating
+relationship/equilibrium. Thus, in step two we estimate an error
+correction model in which changes in **Vote** are a function of the
+long-run disequilibrium in the previous period, $\hat{\mu}_t$ and
+contemporaneous changes in the independent variables. The form of this
+regression is an ECM.
+
+Before we estimate the ECM, we need to determine $D_{sr}$. In this case, $D_{sr} = c$. 
+
+We'll also test for serial correlation in the residuals, but it is
+important to note that this regression should meet all the TS regression
+assumptions.
+
+```{r}
+
+mystatic2 <- dynlm(mvilab~ mgvldrsat +  moppldrsat + meoi, data=data.ts2)
+
+data.ts2$static.DISEQ <- mystatic2$residuals
+
+
+second.step <- dynlm(d(mvilab)~ L(static.DISEQ)  + d(mgvldrsat) + d(moppldrsat) + d(meoi) +  L(d(mgvldrsat),1) + L(d(moppldrsat),1) + L(d(mvilab),1) + L(d(mvilab),4)+ L(d(mvilab),8), data=data.ts2)
+
+summary(second.step)
+bgtest(second.step, order=4)
+bgtest(second.step, order=8)
+bgtest(second.step, order=12)
+checkresiduals(second.step)
+```
+B-G test have p values > 0.05, cannot rejected the hypothesis that there are no serial correlation. Therefore, this model is adequate. checkresiduals() also shows that residuals are white noise. 
+
+
+
+
+# GECM t-test
+
+
+To conduct the ECM $t$-test for cointegration, we estimate the
+generalized error correction model:
+
+$$\Delta y_t = D_t -\alpha_1^* y_{t-1}-\beta_1^* x_{1t-1} - \beta_2^* x_{2t-1} -  … - \beta_n^* x_{nt-1} +  \psi_{1}\Delta x_{1t} + \psi_{2}\Delta x_{2t} + …, \psi_{j}\Delta x_{jt}+ \varepsilon_t$$
+
+
+
+$$\Delta Vote_t = D_t -\alpha_1^* Vote_{t-1} - \beta_1^* PM\_Approval_{t-1} + \beta_2^*Oppo\_Approval_{t-1} + \beta_3*Econ\_Opti_{t-1} +  \\ \psi_{1}\Delta Vote_{t} + 
+\psi_{2}\Delta PM\_Approval_{t} +  \psi_{3}\Delta Oppo\_Approval_{t} + \psi_{4}\Delta Vote_{t-1} + \psi_{5}\Delta Vote_{t-4}+ \psi_{6}\Delta Vote_{t-8} +\varepsilon_t
+$$
+
+
+```{r}
+
+GECM <- dynlm(d(mvilab)~ L(mvilab)+ L(mgvldrsat)+ L(moppldrsat) + L(meoi) + 
+            
+                d(mgvldrsat) + L(d(mgvldrsat), 1) + d(moppldrsat) +  L(d(moppldrsat),1) + d(meoi) +  L(d(meoi),1)+
+                L(d(mvilab),1) + L(d(mvilab),4) + L(d(mvilab),8)
+              ,  data=data.ts2)
+
+
+GECMHAC <- coeftest(GECM, vcov = vcovHAC(GECM))# Heteroscedastic and 
+
+bgtest(GECM, order =4)
+bgtest(GECM, order =8)
+bgtest(GECM, order =12)
+
+checkresiduals(GECM)
+
+```
+
+Probably I added more terms than needed, but from the results we can see that there are not serial correlation and the residuals are white noise. 
+
+
+Let's look at the results. I've asked `stargazer()` to print the
+$t$-statistics, since this is our test statistic.
+
+```{r}
+stargazer(GECM,GECMHAC, type="latex",
+          dep.var.labels = "Changes in Mood",
+          report = "vct*",
+          column.labels = "GECM")
+
+```
+
+Our test statistic is the $t$-statistic on $\hat{\alpha_1^*}$ in the
+GECM (the coefficient on lagged **Vote**) and is -4.886
+
+
+## Critical Values for the GECM $t$-test
+
+Our interest in this test regression is on the t-statistic on lagged
+**VOte**, $\alpha_1^*$. Using the MacKinnon's table again, we choose table 3, k = 3, 0.05 critical value. 
+
+
+1.  Find appropriate table based on whether there is a constant and
+    trend (here just constant, table 3).
+    
+2.  Find row for k equal to number of $I(1)$ independent variables. We
+    have 3 will use alpha level of .05. Note the various $\theta$
+    values: −3.7592 -2.92 −3.7 −5  .
+3.  Compute adjusted sample size $T_a$: $T -(2*k-1) -d$:
+    155-(2\*4-1)-1=147.
+    
+    
+    
+4.  Calculate following formula for approximate critical value:
+    $q(T_i) = \theta_{\infty} + \theta_1(T_i)^{-1} + \theta_2(T_i)^{-2} - \theta_3(T_i)^{-3}$.
+
+$$
+    −3.7592−2.92∗147^{-1}−3.7∗149^{-2}−5∗149^{-3}=−3.779232.
+$$
+
+The $t$-statistic on $\hat{\alpha_1^*}$ in the GECM (the coefficient on
+lagged **Vote**) is -4.886, which is further from zero than the critical
+value. We could reject the null of no cointegration if there were not
+interventions. 
+
+
+
+## Compare GECM with ECM
+
+
+```{r}
+
+
+stargazer(model1, second.step, GECMHAC, type = "text",
+          dep.var.labels=c("Vote", "DeltaVote", "DeltaVote"),
+          dep.var.caption = "",
+          model.names = FALSE,
+          column.labels=c("1st-step", "Two-Step ECM", "GECM"))
+
+
+
+```
+
+
+in our two-step ECM model, we can see that only d(mgvldrsat), Prime minister's approval rate, is statistically significant. 1 unit increase in in the PM Approval rates leads to 0.334% increase in labor vote in the same period. 
+
+
+In GECM model, PM Approval is also statistically significant. Its effect is 0.333. 1 unit increase in in the PM Approval rates leads to 0.333% increase in labor vote in the same period. 
+
+
+
+# Long Run Multiplier
+
+
+
+
+In ECM model, the long run multiplier for PM Approval is 0.445, which suggests that every 1% increase in PM approval rate leads to a 0.445% increase in Labor Vote. Similarly, the LRM for Leader of Opposition Approval (moppldrsa) is -0.354, while the LRM for economic optimism index is -0.051. 
+
+
+In GECM model, 
+
+
+In one-step GECM model, the coefficient for $\hat{\alpha_1^*}$  is −0.564, the LRM for PM Approval is therefore,  −0.254/(−0.564)=0.450. LRM for Leader of Opposition Approval (moppldrsa) is 0.225/(−0.564)=−0.399. LRM for Economic Optimism Index is 0.017/−0.564= −0.0301
+
+LRM for both models are fairly similar and all significant, with only LRM for Economic Optimism Index is slightly different between two models.
+
+#Error correction coeff 
+
+
+
+In ECM model, the error correction rate is -0.557.
+
+In GECM model, the error correction rate is -0.564.
+
+Therefore, 55% to 56% of the data are corrected in each period. I would say this process is fairly quick. 
+
+

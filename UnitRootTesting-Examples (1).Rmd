@@ -1,0 +1,398 @@
+---
+title: "Unit Root Testing Examples"
+subtitle: "PLSC 505"
+author: "Professor Linn"
+date: "February 1, 2022"
+output:
+  html_notebook:
+    number_sections: no
+    theme: cerulean
+    toc: yes
+    toc_depth: 3
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '3'
+  word_document: null
+---
+
+
+
+
+# The Dickey Fuller Test 
+
+We will first consider the University of Michigan Index of Consumer Sentiment, an index tapping the extent to which people feel more or less positive about economic conditions.
+
+```{r}
+library(ggplot2)
+library(scales) # breaks_pretty function to get nicer spacing of date axis
+UMCSENT.ss <- read.csv("SageMonthly78-14.csv", stringsAsFactors = FALSE)
+UMCSENT.ss$date <- as.Date(UMCSENT.ss$date, format="%m/%d/%y")
+```
+
+```{r}
+  ggplot(data = UMCSENT.ss, aes(x = date, y = UMCSENT)) + 
+    geom_line(color = "#00AFBB", size = 1) + 
+    labs(title="University of Michigan Index of Consumer Sentiment",
+         subtitle = "January 1978-June 2018") +
+    xlab("Date") + ylab("") + 
+  scale_x_date(breaks = breaks_pretty(10))
+```
+
+
+
+
+## Dickey Fuller "by hand"
+
+
+```{r, warning=FALSE, message=FALSE}
+library(dynlm) # contains dynlm function, which handles differencing and lags, otherwise same as lm, input must be ts or zoo for lag and diff to work
+
+#Create "ts" class object.
+UMCSENT.ts <- ts(UMCSENT.ss, start=c(1978,1), freq=12)
+
+#Regress change in y on lagged y and lags 1-12 of the first difference of y and present summary results
+
+```
+
+
+**Dickey Fuller Critical Values $D_t = (1,0)$**
+
+Sample Size | 1% | 5% | 10% 
+------------|----|----|-----
+T=25 | -3.75 | -3.00 | -2.63 
+T=50 | -3.58 | -2.93 | -2.60 
+T=100 | -3.51 | -2.89 | -2.58 
+T=250 | -3.46 | -2.88 | -2.57 
+T=500 | -3.44 | -2.87 | -2.57 
+T=$\infty$ |-3.43 | -2.86 | -2.57 
+
+
+---
+
+## Dickey Fuller with the `ur.df()` function in urca
+
+The package urca contains several unit root test functions. To conduct a Dickey Fuller test we use `ur.df()`:
+
+
+ur.df(y, type = c("none", "drift", "trend"), lags = 1,
+      selectlags = c("Fixed", "AIC", "BIC")) 
+
+Arguments:
+
++ y:  Vector to be tested for a unit root. (Need not be "ts" class.)
++ type: Test type, either "none", "drift" or "trend". Specify "none" for an empty $D_t$, "drift" for $D_t=c$, and "trend" for $D_t=c + \delta t$.
++ lag: Number of lags for endogenous variable to be included.
++ selectlags:  Lag selection can be achieved according to the Akaike "AIC" or the Bayes "BIC" information criteria. The maximum number of lags considered is set by lags. The default is to use a "fixed" lag length set by lags.
+
+Use 12 lags for this example. Save the results and apply the `summary()` and `plot()` functions to the saved object.
+
+```{r}
+library(urca) # Contains many unit root tests
+
+```
+
+
+## DF with `adf.tests()` function
+
+I've written a function that will produce the information we want while maintaining the same number of observations in each regression. The function `adf.tests()` takes 4 arguments:
+
++ y, the name of the series
++ pmax, the maximum number of lags for the test
++ lmtestorder, the number of lags to be used to test the null hypothesis the residuals are not seriall correlated
++ type, the form of deterministics to include in the test regression: "none," "constant," or "trend."
+
+The function returns the value of the test statistic and its associated p-value, along with the AIC, BIC, t-value for the highest lagged difference, the LM test p-value for the null of no serial correlation, the $\phi_1$ F statistic (more below), and the number of observations used in the test for each value of $p$.  
+
+```{r, message=FALSE, warning=FALSE}
+source("PGTSadfv2.R")
+##adf.tests<- function(y, pmax, lmtestorder, type = c("none", "constant", "trend")) 
+ 
+```
+
+
+
+# What if we don't know the appropriate form for $D_t$? 
+
+Let's consider a plot of presidential success, yearly percentage of votes on bills on which the president has taken a winning position in the House
+of Representatives from 1953 to 2006 (Lebo and O’Geen 2011).
+
+```{r}
+PresSuccess <- read.csv("Data/PresidentialSuccess.csv")
+ggplot(data = PresSuccess, aes(x = year, y = PresSuccess))+
+  geom_line(color = "#00AFBB", size = 2) + 
+  labs(title="Presidential Success",
+       x="Month", 
+       y="Percent Success", 
+       subtitle="Annual, 1953-2006")
+```
+
+
+**Can I omit $t$?**  
+
+1. Select $p_{max}$ and estimate the test regression with $D_t=c + \delta t$ for $p_{max}$ down to $p=0$ using `adf.tests()`.
+
+
+```{r}
+
+```
+
+
+
+2. Determine the value of $p$ to use and thus which line of the output to use for inference.
+
+3. Test the null $\gamma_0=0$ using $\tau_{\tau}$
+
+4. Test the null $H_0: \gamma =\delta=0$ using $\phi_3$
+
+5. Can also test $H_0: \gamma =c=\delta=0$ using $\phi_2$
+
+
+
+2. **Can I omit $c$?** 
+
+It is UNREASONABLE to omit $c$ as the series cannot have a mean of zero, but we will proceed to set $D_t$ as empty to illustrate how to proceed IF that were reasonable.
+
+1. Select $p_{max}$ and estimate the test regression with $D_t=c + \delta t$ for $p_{max}$ down to $p=0$.
+
+
+```{r}
+
+```
+
+2. Determine the value of $p$ to use and thus which line of the output to use for inference.
+
+3. Evaluate $\tau_{\mu}$. $H_0: \gamma=0$
+
+4. Evaluate $\phi_1$.  $H_0: \gamma =c=0$
+
+
+## Labour Vote Intention 
+
+Labour vote intention is the monthly percentage of voters who would vote for the Labour Party if the election were held "today." 
+  
+```{r}
+library(readstata13)  # read Stata 13 dataset
+df <- read.dta13("Data/UK Parties.dta")
+# Generate date variable
+library(zoo)          # To use.yearmon to generate date variable
+
+df$Date <- as.yearmon(paste(df$year, df$monthofyear), "%Y %m")
+df$Date <- as.Date(df$Date)
+# Create a time series dataframe 
+df.ts <- ts(df, start=c(1997,5), end=c(2010,4), frequency = 12)
+
+  p <- ggplot(data = df, aes(x = Date, y = mvilab)) + 
+    geom_line(color = "#00AFBB", size = 1) + 
+    labs(title="Labour Vote Intention",
+         subtitle = "May 1975-April 2010") +
+    xlab("Date") + ylab("")
+  p + scale_x_date(breaks = breaks_pretty(10))
+```
+
+
+
+### Phillips-Perron
+
+
+ur.pp(x, type = c("Z-alpha", "Z-tau"), model = c("constant", "trend"),
+      lags = c("short", "long"), use.lag = NULL)
+Arguments
+
++ x: Vector to be tested for a unit root.
++ type: Test type, either "Z-alpha" or "Z-tau".  USE "Z-tau"
++ model: Determines the deterministic part in the test regression.
++ lags: Lags used for correction of error term, "short" or "long"
++ use.lag: Use of a different lag number, specified by the user.
+
+Estimate PP test for ICS for both "short" and "long" lags. Save the results and apply the `summary()` and `plot()` functions to the saved objects.
+
+```{r}
+
+```
+
+
+
+### DF-GLS Test
+
+ur.ers(y, type = c("DF-GLS", "P-test"), model = c("constant", "trend"),
+       lag.max = 4)
+
+Arguments
+
++ y: Vector to be tested for a unit root.
++ type: Test type, either "DF-GLS" (default), or "P-test".
++ model: The deterministic model used for detrending.
++ lag.max: The maximum numbers of lags used for testing of a decent lag truncation for the "P-test" (BIC used), or the maximum number of lagged differences to be included in the test regression for "DF-GLS".
+
+
+Apply this test to consumer sentiment. Save the results and apply the `summary()` and `plot()` functions to the saved object.
+
+```{r}
+
+```
+
+
+```{r}
+library(purrr)
+#To produce results for many lags, but note sample size is changing
+lag.max <- list(1,2,3,4)
+series <- list(UMCSENT.ss$UMCSENT)
+resultsall1 <- map2(series, lag.max, ur.ers, type="DF-GLS", model="constant")
+ resultsall1 %>%
+   map(summary)
+```
+
+
+
+
+# KPSS Test
+
+ur.kpss(y, type = c("mu", "tau"), lags = c("short", "long", "nil"),
+        use.lag = NULL)
+
+Arguments
+
++ y: Vector to be tested for a unit root.
++ type: Type of deterministic part.
++ lags: Maximum number of lags used for error term correction, "nill," short," or "long"
++ use.lag. User specified number of lags.
+
+Apply the KPSS test to UMCSENT. Save the results and apply the `summary()` and `plot()` functions to the saved object.
+
+
+```{r}
+
+```
+
+
+```{r}
+#To print multiple tests
+kpsslags <- list("nil", "short","long") 
+series <- list(UMCSENT.ss$UMCSENT)
+resultsall <- map2(series, kpsslags, ur.kpss, type="mu") 
+#resultsall %>%
+#  map(summary)
+
+lags.v <- c("nil", "short", "long")
+output <- numeric(length(lags.v))
+for (i in 1:length(lags.v)){
+  output[[i]] <- (resultsall[[i]]@teststat)}
+cvalskpss <- rep(resultsall[[1]]@cval[2],3)
+resultsdfgls <- matrix(data=c(lags.v, output, cvalskpss), nrow=length(lags.v), byrow = FALSE)
+colnames(resultsdfgls) <- c("Lags","Test Statistic", "5% critical-value")
+stargazer(resultsdfgls, type="text")
+```
+
+# Structural Breaks and Unit Root Tests
+
+
+
+## The Problem
+
+Unit root tests will often fail to reject the unit root null hypothesis in the presence of a structural break, even when both the pre and post break portions of the process are stationary. To see why, let's generate a stationary AR(1) time series with $\phi=0.50$ and with two distinct sub-periods separated by an event that caused a change in the mean:
+
+\[
+y_t=  0.50y_{t-1} + \varepsilon_t + \mu_1Ds_t
+\]
+
+where $Ds_t$ is a level dummy variable that is zero before the date of the break in the mean, here set to 51, and takes a value of 1 thereafter.
+
+
+
+```{r}
+# Generate 2 white noise processes
+set.seed=11166
+y<-rnorm(100,mean=0,sd=.5)
+e<-rnorm(100,mean=0,sd=.5)
+# Generate level dummy variable equal 0 in periods 1-50 and 3 in periods 51 to end
+Ds <- c(rep(0,50), rep(1,50))
+# Generate AR(1) process with mean shift of three
+for(t in 2:100) y[t]= 0.5*y[t-1] +3* Ds[t] +e[t]
+# Generate index to count observations for plotting
+ind <- seq(1,100,1) 
+# Combine into dataframe
+data<- as.data.frame(cbind(y,ind), col.names=c("y","ind"))
+```
+
+
+```{r}
+ggplot(data = data, aes(x=ind, y=y)) + 
+    geom_line(color = "#00AFBB", size = 1) + 
+  stat_smooth(method = "lm") +
+    labs(title="Simulated AR(1) Process with Mean Shift",
+         subtitle=expression(paste(phi, "=0.50"))) +
+    xlab("Time") + ylab("")
+```
+
+
+
+Consider what happens if we conduct a DF test.
+
+```{r}
+summary(ur.df(y, type="drift",lags=0))
+```
+
+
+ Break in a Unit Root Process
+
+We could have a unit root process with a structural break at time 51. Let's simulate and plot this process:
+
+\[
+y_t=y_{t-1} + \varepsilon_t + Dp_t
+\]
+
+where $Dp$ is a pulse dummy that equals 0 in the first 50 perdiods, 4 in the 51st period and 0 thereafter. Such a dummy imparts a jump in the process after the break.
+
+I'm going to use the same errors to generate this process as the AR(1) process with mean shift.
+
+```{r}
+# Generate pulse dummy variable equal 0 in periods 1-50 and 4 in period 51 and 0 there after
+Dp <- c(rep(0,50), 1, rep(0,49))
+# Generate unit root process with pulse dummy and same errors as above.
+z <- 2
+for(t in 2:100) z[t]= z[t-1] + 3*Dp[t] +e[t]
+# Generate index to count observations for plotting
+ind <- seq(1,100,1) 
+# Combine into dataframe
+data2<- as.data.frame(cbind(z,ind), col.names=c("z","ind"))
+
+ggplot(data = data2, aes(x=ind, y=z)) + 
+    geom_line(color = "#00AFBB", size = 1) + 
+    labs(title="Simulated Unit Root with Pulse Shock") +
+    xlab("Time") + ylab("")
+```
+
+
+
+
+
+
+## Andrew-Zivot Test: Date Unknown
+
+ur.za(y, model = c("intercept", "trend", "both"), lag=NULL)
+
+Arguments
+
++ y: Vector to be tested for a unit root.
++ model:Specification if the potential break occured in either the intercept, the linear trend or in both.
++ lag: The highest number of lagged endogenous differenced variables to be included in the test regression
+
+For  an example illustrating the test in R see https://rpubs.com/rpubkl2016/ttu_eco5316HW4p1.
+
+
+Let's look at **UMCSENT**. A trend makes no sense, so let's specify model="intercept". Set the number of lags for the test regression to 5, which was the value selected by the AIC in the Dickey Fuller regression above.
+
+Save the results and apply the `summary()` and `plot()` functions to the saved object
+
+```{r}
+
+```
+
+
+
+
+

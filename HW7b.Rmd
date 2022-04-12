@@ -1,0 +1,446 @@
+---
+title: "HW7b"
+author: "Alex"
+date: "3/13/2022"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '3'
+    toc_float: true
+    code_folding: hide
+    mathjax: "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS_CHTML.js"
+  html_notebook:
+    number_sections: no
+    theme: cerulean
+    toc: yes
+    toc_depth: 3
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+  word_document: null
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE}
+
+library(tidyr) #functions to manipulate data
+library(lubridate)
+
+
+library(urca) 
+#install.packages("aTSA")
+library(dynlm)
+library(dplyr)
+library(grid)
+library(gridExtra)
+library(dynlm)
+library(tidyverse)
+library(ggplot2)
+library(ggthemes)
+library(astsa)
+library(strucchange)
+library(lmtest)
+library(sandwich)
+library(tseries)
+library(kableExtra)
+source("/Users/alex/Downloads/PGTSadfv2.R")
+
+
+```
+
+Begin with a short description of your research question.
+
+## Question description
+
+  Ideally, I want to know what affects people's long-term online attitude on police. This idea is inspired by the online opinion trend caused by George Floyd's death. Therefore, we need to think about what caused online opinion trends. External shocks, such as the death of George Floyd, cause structural breaks in our time series data. On the other hand, popularity of police related topics plays an important role as well. Topic popularity decides who will join the discussion. If popularity of police related topics is low, only people that are attentive to the topic join the discussion, yet higher popularity will include a wider range of opinions. In a similar vein, we should include topic exposure in traditional medias as well. 
+  
+##Describe the data
+
+The data is collected from Twitter using publicly available API between 2020.01.01 and 2020.12.31. Since the death of  George Floyd happens on May 25th, 2020, and our aim is to study opinion trends cause by this event, we will try to capture online opinions using data both before and after May.25th. Therefore, we choose to collect a whole year's data, to best avoid external shocks and keep track of Twitter opinion changes until the effect of George FLoyd's death runs out. The sentiment of Twitter opinions is analyzed through Vader, a Python package that can calculate how negative each Tweet is. Negativity ranges from 0 to 1, with 0 representing no negativity and 1 representing absolutely negative. We then get an average Twitter sentiment negativity by calculating the average negativity of everyday's  Tweets. The average negativity of everyday's Tweets will be our depedent variable for analysis. As for independent variables, we take topic popularity as our main IV, and the death of George Floyd as the main external shock. To measure topic popularity, we collect 10,000 tweets in each day, and check how frequently BLM related topics appear in each day's tweets. An important control variable is TV report frequency. We use data from GDELT project to see how frequently  BLM related news appear on TV news. 
+
+##Plot the data
+```{r}
+dates <- seq(as.Date("2020-01-01"), as.Date("2020-12-31"), by=1)
+
+
+date_pop = data.frame(dates)
+date_pop$pop <- NA
+
+data<- read.csv("/Users/alex/Downloads/PLSC505_Pop/results_2020-06-15_505_Pop.csv")
+
+
+## read in Popularity data
+for(i in 1: 365){
+  counter  = 0
+  percent = 0
+  temp_string = paste("results_",as.character(dates[i]), "_505_Pop.csv",sep = "")
+  data<- read.csv(paste("/Users/alex/Downloads/PLSC505_Pop/",temp_string,sep = ""))
+  for(j in 1:length(data$text)){
+    if( grepl("BlackLivesMatter",data$text[j] ) |  grepl("BLM",data$text[j] ) | grepl("Black Lives Matter",data$text[j] ) ){
+        counter = counter + 1
+    }
+  }
+  percent = counter/length(data$text)
+  date_pop$pop[i] = percent 
+}
+
+summary(date_pop$pop)
+
+
+
+##READ IN SENTIMENT DATA
+dates <- seq(as.Date("2020-01-01"), as.Date("2020-12-31"), by=1)
+
+date_emo = data.frame(dates)
+for(i in 1: 365)
+{
+  temp_string = paste("results_",as.character(dates[i]), "_505.csv",sep = "")
+  data<- read.csv(paste("/Users/alex/Downloads/PLSC505/",temp_string,sep = ""))
+  date_emo$emo_avrg[i] = mean(data$neg_w)
+}
+
+
+ts_emo <- ts(date_emo$emo_avrg,start = decimal_date(as.Date("2020-01-01")), frequency = 365)
+ts_pop <- ts(date_pop$pop,start = decimal_date(as.Date("2020-01-01")), frequency = 365)
+#library(astsa) #tsplot and acf2 function
+				
+ggplot(data = date_emo, aes(x = dates, y = emo_avrg))+
+  geom_line(color = "#00AFBB", size = 1) + 
+  #scale_x_date(date_labels = "%b\n%Y", date_breaks = "4 year", ) +
+  labs(title="Negativity of Twitter sentiments on Police",
+       x="Dates", 
+       y="Percent Negativity", 
+       subtitle="January 1, 2020 through December 31, 2020")
+
+
+
+
+
+ts_emo <- ts(date_emo$emo_avrg,start = decimal_date(as.Date("2020-01-01")), frequency = 365)
+
+#library(astsa) #tsplot and acf2 function
+				
+ggplot(data = date_pop, aes(x = dates, y = pop))+
+  geom_line(color = "#00AFBB", size = 1) + 
+  #scale_x_date(date_labels = "%b\n%Y", date_breaks = "4 year", ) +
+  labs(title="Popularity of BLM movement related tags",
+       x="Dates", 
+       y="Popularity", 
+       subtitle="January 1, 2020 through December 31, 2020")
+
+
+
+data_TV<- read.csv("/Users/alex/Downloads/TV_Coverage.csv")
+
+dates <- seq(as.Date("2020-01-01"), as.Date("2020-12-31"), by=1)
+
+
+date_TV = data.frame(dates)
+date_TV$cov <- 0
+
+
+
+
+
+for(j in 0 : 8){
+  for( i in 1 : 366){
+    date_TV$cov[i]  = date_TV$cov[i] + data_TV$Value[i + 366 * j]
+  }
+}
+
+date_TV$cov = date_TV$cov/9
+
+
+ggplot(data = date_TV, aes(x = dates, y = cov))+
+  geom_line(color = "#00AFBB", size = 1) + 
+  #scale_x_date(date_labels = "%b\n%Y", date_breaks = "4 year", ) +
+  labs(title="TV report frequency",
+       x="Dates", 
+       y="Frequency()", 
+       subtitle="January 1, 2020 through December 31, 2020")
+
+
+
+
+```
+
+
+From plots we can see that values of our DV, IV and controlls all spike after late May, when George FLoyd was killed. 
+
+##Univariate properties:
+
+
+
+From the result in the appendix  we can see that the $t$ value for lag 1 is -3.257, $-3.257 < -2.87$, therefore we can reject the null hypothesis that this is a unit root process. 
+
+
+Information criteria let us choose lags up to 14, but t value let us choose between 5 and 6. Consider we are using daily data, and weekly patterns are important in process daily data, we try lag = 7, which is slightly larger than 5 and 6. 
+
+
+
+
+
+
+## Discuss whether weak exogeneity is a reasonable assumption
+
+
+Our  model is $Y_t = \beta_1 Y_{t-1} + \beta_2 Y_{t-7} + \sum_{i = 1}^{7} \gamma_{i} X_{t-i} + D_{GF} + \epsilon$ In ADL form, it is ADL(1,7;1)(7,0,0). P and Q are justified in the appendix using  a series of tests. Our B-G test has all p > 0.05. Therefore, null hypotheses are rejected, and our model is  dynamically complete. Drop additional terms is rejected by F tests, and adding more terms is rejected by RESET test. Though ADL(1,7;1)(7,0,0) and ADL(7,7;1)(7,0,0) both passes all tests, we still choose the first model based on information criterias. In testing for residual serial correlation, we yielded no significant results in tests for serial correlation between errors. We also see no heteroskedasticity. For weak exogeneity, first we take RESET test and find no significance. B-G test ensure there are no serial correlation. Despite our significant result in testing for regression of residuals from conditional model on residuals from marginal model,  it is understandable since Yt is affected by Xt with seasonality and Xt affected by Yt with seasonality. Such significance is most likely caused by strong intercorrelation between Xs and Ys.  Finally, our test for null hypothesis cannot be rejected, which means weak exogeneity cannot be rejected. 
+
+
+## single-equation analysis from homework 7. 
+
+
+
+A table containing the results of your general model and the model you selected as a result of model simplification. The table should report the estimated coefficients, the long-run multipliers (with standard errors), model fit and tests for serial correlation and heteroscedasticity. If you cannot eliminate serial correlation, use either Newey-West or HAC standard errors in your table. If you find heteroscedasticity, use heteroscedastic robust standard errors.
+A short discussion of results of tests of the TS regression assumptions.  It is enough to say there is no evidence particular assumptions are violated. You do not need to put all your tests in the appendix
+A detailed description of what you learned from the analysis, including direct effect and long-run multipliers for variables of interest. Discuss how the effects play out over time. Focus on what this tells your about the relationships in the data.
+```{r}
+
+
+
+date_emo$popul = date_pop$pop
+
+date_emo $GF = 0
+
+date_emo $GF[141] = 1
+
+for(i in 141 : length(date_emo)){
+  date_emo $GF[i] = 1
+}
+
+date_emo$TV_cov = date_TV$cov
+
+ts_emo <- ts(date_emo,start = decimal_date(as.Date("2020-01-01")), frequency = 365)
+
+
+
+ADL2<- dynlm(emo_avrg ~ L(emo_avrg,c(1,2,3,4,5,6,7))+
+                     popul +L(popul, c(1,2,3,4,5,6,7))+
+                     GF,data=ts_emo)
+
+
+ADL_7S71 <- dynlm(emo_avrg ~ L(emo_avrg,c(1,7))+
+                     popul +L(popul, c(1,2,3,4,5,6,7))+
+                     GF,start = decimal_date(as.Date("2020-01-08")),end=decimal_date(as.Date("2020-12-31")),data=ts_emo)
+
+
+ADL2HAC <-coeftest(ADL2, vcov = vcovHC(ADL2, type="HC1")) # Heteroscedastic consistent covariance matrix
+ADL7S71HAC <-coeftest(ADL_7S71, vcov = vcovHC(ADL_7S71, type="HC1"))
+
+names(ADL2$coefficients) <- c( 'Constant','Y_t-1','Y_t-2','Y_t-3','Y_t-4','Y_t-5','Y_t-6','Y_t-7',
+                              'Popul',
+                              'Popul_t-1','Popul_t-2','Popul_t-3','Popul_t-4','Popul_t-5','Popul_t-6','Popul_t-7',
+                             'GF')
+
+names(ADL_7S71$coefficients) <- c('Constant','Y_t-1','Y_t-7',
+                              'Popul',
+                              'Popul_t-1','Popul_t-2','Popul_t-3','Popul_t-4','Popul_t-5','Popul_t-6','Popul_t-7',
+                              'GF')
+
+
+
+
+
+
+bgtest(ADL_7S71, order=6, type="Chisq")
+
+LM2SE <-stargazer(ADL2,ADL_7S71,
+                     type = "text", 
+                     title="ADL Regression Results",
+                     align=TRUE,
+                     style="ajs",
+                  column.labels =c("General","Simplified"),
+                  dep.var.labels = c("Models"),
+                  model.names = FALSE,
+                  add.lines=list(c('HeteroSkedasticity', 'No','No'),c('Serial Correlation', 'No','No'),c('LRM','0.09174296 ','0.1427736'))
+                  )
+
+bptest(ADL_7S71)
+
+
+```
+##TS assumptions
+
+TS1: Linearity is rejected by plotting residuals against fitted values. RESET tests yield no significant results. 
+TS2: Stationarity and Weak Dependence :parameters on lagged coefficients are smaller than 1.
+TS3: Zero conditional mean rejected by RESET test, and B-G test.
+TS4: We cannot reject weak exogeneity by B-G test, p > 0.05
+TS5: Heteoskedasticity rejected by plotting residuals against fitted values, B-P test, p > 0.05. Plotting residuals against fitted values show that most residuals are distributed balancely around 0 redisuals line, with only very few outliers. 
+
+
+
+##discussion
+
+From our final model we can see that one unit change in the average sentiment negativity on BLM related Tweets at time t-1 results in 0.50 units of increase in the negativity of sentiments at time t. We may say that half of the sentiment passes on to next day. On the other hand, sentiment at day t also inherits around 0.20 of sentiments a week ago, at time t-7.  Popularity of related topics, on the other hand, plays a more important role in affecting sentiments. popularity of related topics at time t-1 strongly affects Tweet sentiment at time t. 1% increase in topic popularity results in 3.94% increase in negative sentiments.In other words, people are more negative as topic popularity increases. Popularity of related topics in the whole week before day t has significant effects on sentiments as well.They slightly decreases negative sentiments , yet their effects are small compared to the effect of popularity at time t-1. Interestingly, the death of George Floyd reduces average sentiment negativity by a small yet significant amount. It is possible that more tweets are sent by media and get large amount of retweets. As a result, these tweets reduce overall negativity because of their relatively neutral tone. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Appendix 
+
+DF test
+```{r}
+
+ # Contains many unit root tests
+
+icsdf <- ur.df(date_emo$emo_avrg, lags = 12, type = "drift")
+summary(icsdf)
+icsdf@teststat
+
+
+```
+
+
+
+ADF test
+```{r}
+adf.tests(date_pop$pop, pmax = 14, lmtestorder = 12, type = "constant")
+
+```
+
+
+## Justifying our model choices
+
+```{r}
+
+date_emo$popul = date_pop$pop
+
+date_emo $GF = 0
+
+date_emo $GF[141] = 1
+
+for(i in 141 : length(date_emo)){
+  date_emo $GF[i] = 1
+}
+
+date_emo$TV_cov = date_TV$cov
+
+ts_emo <- ts(date_emo,start = decimal_date(as.Date("2020-01-01")), frequency = 365)
+
+
+
+
+
+ADL1<- dynlm(emo_avrg ~ L(emo_avrg,1) +L(emo_avrg,2) +L(emo_avrg,3) + L(emo_avrg,4) +L(emo_avrg,5) +L(emo_avrg,6) +L(emo_avrg,7) +    
+                     popul +L(popul, c(1,2))+ 
+                     GF,data=ts_emo)
+
+
+
+
+
+
+summary(ADL1)
+
+
+
+
+```
+
+
+FRom the ADl  we can see that only the first and the 7th term of our DV, Twitter sentiment, is statistically significant.(This suggests a 7-day seasonality) On the other hand, despite the second lagged term of IV is significant, the first lagged term of IV is not.Therefore, we might want to exclude $X_{t-1}$ from the model.(can we ?) The structural break, namely the death of George Floyd, is statistically significant in creating a slope break. 
+
+
+
+ ##test for TS1
+```{r}
+
+plot(ADL1$fitted.values,model.frame(ADL1)$emo_avrg)
+plot(ADL1$fitted.values,ADL1$residuals)
+
+
+```
+After plotting the observed versus predicted values from the estimated model, we see that points are almost  distributed around a 45 degree line. Our plots of residuals versus predicted values is distributed almost around 0.It looks good, but we will still look into other tests. 
+
+
+## RESET Test
+```{r}
+resettest(ADL1, power=2, type="regressor", data=AppEcon.ts)
+
+```
+
+The Null hypothesis is not rejected! Therefore, it suggests that we might included enough variables for analysis. 
+
+## EFP tests
+
+
+```{r}
+
+my_efp <- efp(ADL1, type="OLS-CUSUM", data=ts_emo)
+plot(my_efp)
+sctest(my_efp)
+
+
+```
+
+
+
+In the OLS-based CUSUM test , we have p >0.05, cannot reject the null hypothesis that residuals are NOT serial-correlated.Therefore, we can say that our noises are not serial correlated. 
+
+
+
+
+
+### test for weak exogeneity 
+
+
+```{r}
+Popularity <- dynlm( popul ~ L(popul, 1)+L(popul, 2)+L(popul, 3)+L(popul, 4) + L(popul, 5)+L(popul, 6)+L(popul, 7) 
+                +emo_avrg+L(emo_avrg,7)
+                     ,data = ts_emo)
+summary(Popularity)
+DIresids <- Popularity$residuals
+```
+
+
+## Check for no serial correlation
+```{r}
+
+bgtest(Popularity, order=24, type="Chisq")
+bgtest(Popularity, order=12, type="Chisq")
+bgtest(Popularity, order=6, type="Chisq")
+
+```
+
+
+## Estimate Test Regression of residuals from conditional model on residuals from marginal model and lagged sentiment. 
+```{r}
+ExTest <- dynlm(ADL1$residuals~ Popularity$residuals + L(model.frame(ADL1)$emo_avrg))
+(RExTest <- summary(ExTest))
+
+
+
+```
+
+## Test the null hypothesis
+
+
+```{r}
+
+
+RExTest$r.squared*length(ExTest$residuals)
+qchisq(.10, 1, lower.tail=FALSE)
+qchisq(.05, 1, lower.tail=FALSE)
+qchisq(.01, 1, lower.tail=FALSE)
+
+
+```
+
+
+
+
+
+
+

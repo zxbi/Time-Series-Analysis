@@ -1,0 +1,208 @@
+---
+title: "HW1_Alex Bi"
+subtitle: "PLSC 505"
+author: "Alex Bi"
+date: "January 16, 2022"
+output:
+  html_document:
+    df_print: paged
+    toc: yes
+    toc_depth: '3'
+  word_document: null
+  html_notebook:
+    number_sections: no
+    theme: cerulean
+    toc: yes
+    toc_depth: 3
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+# Preliminaries
+
+
+1. load libraries
+
+```{r, message=FALSE}
+library(ggplot2)
+library(scales)
+library(dplyr)
+library(gridExtra)
+library(astsa)
+library(timeSeries)
+```
+
+2. Load the data.
+
+We will use monthly data from January 1978 through April of 2014 to illustrate some ways we can deal with dates and generate time series plots. This data set contains a number of variables tapping economic performance (inflation (**inf**), unemployment (**UNRATE**), percentage growth in the Conference Board's leading, lagging and coincident economic indicators (**LEIPC**, **LAGPC**, **LEIPC**), as well as Michigan index of consumer confidence (**UMCSENT**),  presidential approval ratings (**Approve**), and a number of rally around the flag and crisis events. Additionally, the data contains **year** and **month** as well as a **date** column.
+
+
+The file is a csv format so we will use the `read.csv()` function to load the data.  We need to use the `stringsAsFactors` argument and set it to FALSE. This tells R to treat strings as characters rather than as a factor.
+
+
+```{r}
+news <- read.csv("/Users/alex/Desktop/R_Working_Directory/PLSC505/W1/HW1/News_Final.csv") # DATA ON NEWS ITEMS
+facebook_economy <- read.csv("/Users/alex/Desktop/R_Working_Directory/PLSC505/W1/HW1/Facebook_Economy.csv")
+googleplus_economy <- read.csv("/Users/alex/Desktop/R_Working_Directory/PLSC505/W1/HW1/GooglePlus_Economy.csv")
+linkedin_economy <- read.csv("/Users/alex/Desktop/R_Working_Directory/PLSC505/W1/HW1/LinkedIn_Economy.csv")
+
+#create new data frame
+new_dataframe <- data.frame()
+new_dataframe <- data.frame(matrix(nrow= ncol(facebook_economy) ))
+new_dataframe$FB <- NA
+new_dataframe$goog <- NA
+new_dataframe$linkedin <- NA
+
+
+
+```
+
+
+
+produce average for three websites and remove empty data entries. 
+
+```{r}
+for(i in 1:ncol(facebook_economy)) {       # for-loop over columns
+
+  new_dataframe$FB[i] <- mean(facebook_economy[which(facebook_economy[ , i] != -1),i])
+}
+
+for(i in 1:ncol(googleplus_economy)) {       # for-loop over columns
+
+  new_dataframe$goog[i] <- mean(googleplus_economy[which(googleplus_economy[ , i] != -1),i])
+}
+
+for(i in 1:ncol(linkedin_economy)) {       # for-loop over columns
+
+  new_dataframe$linkedin[i] <- mean(linkedin_economy[which(linkedin_economy[ , i] != -1),i])
+}
+colnames(new_dataframe) <- c('timestamp','FB','goog','linkedin')
+
+new_dataframe <- new_dataframe[ !(new_dataframe$FB > 100), ]
+```
+
+The worst part of this database is that it only catches news popularity trends in a 20-minute interval. 
+
+
+```{r}
+for(i in 1:nrow(new_dataframe)) {       # for-loop over columns
+  
+  new_dataframe$timestamp[i] <- 20*(i - 1)
+}
+```
+
+
+create a variable to represent date in "date" class
+and a second version in ts/mts class
+(i didn't actually use "date" class in my code later)
+```{r}
+news$Day <- substr(news$PublishDate,1,10)
+news$Day <- as.Date(news$Day)
+
+data.ts <- ts(news, frequency = 12, start=c(2015,03), end=c(2016,07))
+```
+
+
+
+
+
+
+
+Individial line plot for each series
+```{r}
+{
+par(mfrow=c(2,2),oma=c(0,0,2,0))
+
+plot.ts(new_dataframe$FB, main="News popularity trend on Facebook \n Time in minutes",
+     ylab = "popularity",
+     lwd = "2",
+     col = "brown")
+plot.ts(new_dataframe$goog, main="News popularity trend on GooglePlus \n Time in minutes",
+        ylab = "popularity",
+        lwd = "2",
+        col = "green")
+
+plot.ts(new_dataframe$linkedin, main="News popularity trend on Linkedin \n Time in minutes",
+        ylab = "popularity",
+        lwd = "2",
+        col = "blue")
+
+mtext("Source: UCI machine learning repository", side = 3, line = 0, outer = TRUE)
+
+}
+
+```
+
+
+The time series starts from time 0, when a piece of news was initially released, and lasts for 2880 minutes, namely 2 days after the initial release of the news. Popularity of economic news generally increases in the two days following their release, while the rate of increase tends to slow down. Popularity of any news should return to almost 0 if observed in a longer time series, however this dataset is insufficient for us to observe subsequent patterns. The variance is generally stable, except a few volatility around 20min after the release. Since we use average popularity of economic news as the dependent variable, it is likely that the popularity of some news rapidly declines at this point, while others’ popularity keeps increasing. The series appears to trend in an increasing pattern, yet the rate of increase is decreasing. There are no outliers or apparent structural breaks and the series is generally smooth, yet they are still largely due to our choice of using average popularity as the dependent variable. It is not possible to include more than 33 thousand pieces of news individually, yet using their average popularity tells so little information. We are still trying to find the best way of using these data effectively. The series shows no evidence of seasonality because the time interval is short. It is largely due to database limitations that we can’t find much useful information from the data. I’m collecting data on COVID-19 related Twitter sentiments, but the data collection and sentiment classification process requires longer than a week to finish :(. 
+
+
+
+Facebook and Google trend in one panel:
+
+
+```{r}
+{
+  new_dataframe$FB <- scale(new_dataframe$FB)
+new_dataframe$goog <- scale(new_dataframe$goog)
+graph1 = ggplot() + 
+  geom_line(data = new_dataframe, aes(x = timestamp, y = goog, color = "GooglePlus")) +
+  geom_line(data = new_dataframe, aes(x = timestamp, y = FB, color = "FaceBook")) +
+  xlab('time(in minutes)') +
+  ylab('popularity(scaled)')+
+  labs(title="The Relationship between news popularity on Facebook and Google Plus",
+       subtitle="From 0 to two days after news release",
+       x="Month", 
+       y=NULL)
+print(graph1)
+
+}
+```
+
+
+
+
+graph in separate panels
+
+```{r}
+{
+  graph2 = ggplot() + 
+  geom_line(data = new_dataframe, aes(x = timestamp, y = goog, color = "GooglePlus")) +
+  ylab('popularity(scaled)')+
+  labs(title="The Relationship between news popularity on Facebook and Google Plus",
+       subtitle="From 0 to two days after news release",x = NULL)
+
+graph3 = ggplot() + 
+  geom_line(data = new_dataframe, aes(x = timestamp, y = FB, color = "Facebook")) +
+  xlab('time(in minutes)') +
+  ylab('popularity(scaled)')
+
+
+grid.arrange(graph2, graph3, nrow=2)
+}
+```
+
+ 
+The two series track one another pretty closely, and it fits my expectations because the general pattern of news popularity should be pretty similar across websites, although sometimes different for specific news.  They appear to be pretty simultaneous and no one lag or lead another. 
+
+
+lag plot:
+
+```{r}
+{
+  news_trend <- timeSeries::removeNA(new_dataframe$timestamp)  
+#lag.plot function in stats package
+lag.plot(news_trend,lags=6,do.lines=FALSE,main="Lag Plot for News Trends",
+         diag="TRUE",diag.col="red")
+
+}
+```
+
+
+The correlations are so strong that we can barely tell any difference between them in the lag plot. The pattern in the correlation does not change as the number of lags increases since they correlate so well. This suggests that the dataset is not ideal for analysis since these two variables correlate too well, and can’t give us any valuable information. 
+
+
+
+
+P.S. Sorry this dataset is quite unsuccessful. I didn't know it until I worked on it for a while. I've been working on getting Twitter sentiments for analysis(at least the time span is much longer), but didn't make it this week. I hope my new dataset is good to use next week, 
